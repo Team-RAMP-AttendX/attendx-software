@@ -1,0 +1,6 @@
+{
+  "name": "AttendX",
+  "description": "Smart Attendance Management System with Fingerprint and PIN fallback.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

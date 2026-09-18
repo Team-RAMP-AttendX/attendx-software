@@ -1,0 +1,65 @@
+export type Role = 'Student' | 'Staff' | 'Admin';
+export type AuthMode = 'fingerprint' | 'pin';
+export type AttendanceStatus = 'Present' | 'Late' | 'Absent';
+export type SyncStatus = 'Pending' | 'Syncing' | 'Synced' | 'Failed';
+export type DeviceStatus = 'ONLINE' | 'OFFLINE';
+
+export interface User {
+  id: string; // User ID
+  name: string;
+  role: Role;
+  status: 'Active' | 'Inactive';
+  dateRegistered: string; // ISO date string
+  pinHash?: string;
+  totalAttendance: number;
+  lateOccurrences: number;
+}
+
+export interface Fingerprint {
+  id: string;
+  userId: string;
+  registrationDate: string;
+  status: 'Active' | 'Inactive';
+}
+
+export interface AttendanceRecord {
+  id: string;
+  userId: string;
+  deviceId: string;
+  date: string; // YYYY-MM-DD
+  checkInTime?: string; // ISO String
+  checkOutTime?: string; // ISO String
+  checkInMode?: AuthMode;
+  checkOutMode?: AuthMode;
+  status: AttendanceStatus;
+  lateDurationMinutes: number;
+  syncStatus: SyncStatus;
+  createdAt: string; // ISO String
+}
+
+export interface PINImage {
+  id: string;
+  attendanceId: string;
+  userId: string;
+  captureTime: string; // ISO String
+  authMode: AuthMode;
+  storageRef: string; // Just a mock path for the demo
+}
+
+export interface Device {
+  id: string;
+  status: DeviceStatus;
+  wifiStatus: 'Connected' | 'Disconnected';
+  lastSync: string; // ISO String
+  pendingRecords: number;
+  batteryStatus: number; // Percentage
+  powerStatus: 'AC' | 'Battery';
+}
+
+export interface DatabaseSchema {
+  users: User[];
+  fingerprints: Fingerprint[];
+  attendance: AttendanceRecord[];
+  images: PINImage[];
+  devices: Device[];
+}

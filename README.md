@@ -1,11 +1,33 @@
-<div align="center">
+# AttendX
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+## Problem
+Fingerprint recognition fails frequently. Network outages interrupt centralized synchronization.
 
-  <h1>Built with AI Studio</h2>
+## Solution
+A resilient smart attendance system with Fingerprint primary authentication, PIN fallback (with ESP-CAM image evidence), offline local storage, and automatic synchronization.
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+## Features
+- Fingerprint & PIN Authentication
+- Duplicate Prevention & Late Tracking
+- PIN Image Evidence Vault
+- Offline Mode & Automatic Sync
+- Central Dashboard with Analytics
+- Filter-aware Excel Export
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
+## Architecture
+- **Hardware:** ESP32, SMF V1.7, ESP-CAM
+- **Backend:** Next.js API Routes (Node.js)
+- **Frontend:** Next.js App Router, Tailwind CSS, Lucide Icons, Recharts
 
-</div>
+## Setup
+1. `npm install`
+2. `npm run dev`
+3. Access Dashboard at `http://localhost:3000`
+
+## Demo Mode
+The MVP includes pre-seeded demo data that demonstrates fingerprint events, PIN fallback events, late arrivals, and offline synchronization states.
+
+## Roadmap
+- Multiple Terminals
+- Configurable Schedules
+- Institution Management
