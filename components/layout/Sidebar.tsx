@@ -25,7 +25,16 @@ export function Sidebar() {
       <div className="flex-1 overflow-y-auto py-4">
         <nav className="space-y-1 px-3">
           {navigation.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(item.href + '/') && item.href !== '/'
+            // Precise active check preventing /attendance from conflicting with /attendance/history or /attendance/evidence
+            const isActive = (() => {
+              if (item.href === '/') {
+                return pathname === '/';
+              }
+              if (item.href === '/attendance') {
+                return pathname === '/attendance';
+              }
+              return pathname === item.href || (pathname.startsWith(item.href + '/') && !navigation.some(other => other.href !== item.href && other.href.length > item.href.length && pathname.startsWith(other.href)));
+            })();
             return (
               <Link
                 key={item.name}

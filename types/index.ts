@@ -48,12 +48,24 @@ export interface PINImage {
 
 export interface Device {
   id: string;
+  name?: string;
+  location?: string;
   status: DeviceStatus;
   wifiStatus: 'Connected' | 'Disconnected';
   lastSync: string; // ISO String
   pendingRecords: number;
   batteryStatus: number; // Percentage
   powerStatus: 'AC' | 'Battery';
+  ipAddress?: string;
+  macAddress?: string;
+  firmwareVersion?: string;
+  esp32Heap?: string;
+  fingerprintStatus?: string;
+  cameraStatus?: string;
+  keypadStatus?: string;
+  lcdStatus?: string;
+  lcdText?: string[];
+  voltage?: string;
 }
 
 export interface DatabaseSchema {
