@@ -4,7 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { 
   HardDrive, Wifi, WifiOff, Battery, Plug, Activity, Clock, 
   Plus, Trash2, RefreshCw, Cpu, Camera, Terminal, CheckCircle2, 
-  AlertTriangle, X, Radio, Eye, Zap, ShieldCheck 
+  AlertTriangle, X, Radio, Eye, Zap, ShieldCheck, FileCode,
+  Fingerprint, BookOpen, Send, Check, Layers, Download
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Device } from '@/types'
@@ -18,6 +19,31 @@ export default function DevicesPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [selectedDeviceDetails, setSelectedDeviceDetails] = useState<Device | null>(null)
   const [deviceToDelete, setDeviceToDelete] = useState<Device | null>(null)
+  const [isApiSpecsModalOpen, setIsApiSpecsModalOpen] = useState(false)
+  const [apiSpecTab, setApiSpecTab] = useState<'telemetry' | 'enrollment' | 'checkin' | 'evidence'>('telemetry')
+
+  // Biometric Enrollment & Sync Modal
+  const [isBioSyncModalOpen, setIsBioSyncModalOpen] = useState(false)
+  const [selectedBioSyncDevice, setSelectedBioSyncDevice] = useState<Device | null>(null)
+  const [bioSyncData, setBioSyncData] = useState<{
+    deviceId: string;
+    totalUsers: number;
+    totalEnrolledInDb: number;
+    users: Array<{
+      userId: string;
+      name: string;
+      role: string;
+      hasFingerprint: boolean;
+      slotNumber: number;
+      templateData: string | null;
+      isEnrolledOnThisTerminal?: boolean;
+    }>;
+  } | null>(null)
+  const [bioSyncLoading, setBioSyncLoading] = useState(false)
+  const [bioSyncMsg, setBioSyncMsg] = useState<string | null>(null)
+  const [scanningUserId, setScanningUserId] = useState<string | null>(null)
+  const [scanStep, setScanStep] = useState<'idle' | 'prompted' | 'capturing' | 'saved'>('idle')
+  const [testTelemetryStatus, setTestTelemetryStatus] = useState<string | null>(null)
 
   // Add Device Form
   const [newDeviceId, setNewDeviceId] = useState("")
@@ -44,6 +70,130 @@ export default function DevicesPage() {
   useEffect(() => {
     fetchDevices()
   }, [fetchDevices])
+
+  const handleOpenBioSync = async (device: Device) => {
+    setSelectedBioSyncDevice(device)
+    setIsBioSyncModalOpen(true)
+    setBioSyncLoading(true)
+    setBioSyncMsg(null)
+    setScanningUserId(null)
+    setScanStep('idle')
+    try {
+      const res = await fetch(`/api/devices/enrollment?deviceId=${encodeURIComponent(device.id)}`)
+      const data = await res.json()
+      setBioSyncData(data)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setBioSyncLoading(false)
+    }
+  }
+
+  const handleSyncAllTemplates = async () => {
+    if (!selectedBioSyncDevice) return
+    setBioSyncLoading(true)
+    setBioSyncMsg(null)
+    try {
+      const res = await fetch('/api/devices/enrollment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'SYNC_ALL_TO_TERMINAL',
+          deviceId: selectedBioSyncDevice.id
+        })
+      })
+      const data = await res.json()
+      setBioSyncMsg(data.message || 'All database fingerprints provisioned to terminal flash.')
+      // Refresh enrollment data
+      const updated = await fetch(`/api/devices/enrollment?deviceId=${encodeURIComponent(selectedBioSyncDevice.id)}`).then(r => r.json())
+      setBioSyncData(updated)
+      fetchDevices()
+    } catch (err) {
+      setBioSyncMsg('Failed to sync biometric templates.')
+    } finally {
+      setBioSyncLoading(false)
+    }
+  }
+
+  const handleStartTerminalScan = async (userId: string, userName: string) => {
+    if (!selectedBioSyncDevice) return
+    setScanningUserId(userId)
+    setScanStep('prompted')
+    setBioSyncMsg(null)
+    try {
+      // 1. Arm terminal via backend
+      await fetch('/api/devices/enrollment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'QUEUE_ENROLLMENT',
+          deviceId: selectedBioSyncDevice.id,
+          userId
+        })
+      })
+      
+      // Simulate live optical sensor interaction
+      setTimeout(() => {
+        setScanStep('capturing')
+        setTimeout(async () => {
+          const res = await fetch('/api/devices/enrollment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'COMPLETE_ENROLLMENT',
+              deviceId: selectedBioSyncDevice.id,
+              userId,
+              templateData: `SMF17_FP_${userId}_ENROLLED_${Math.random().toString(36).substring(2, 8).toUpperCase()}`
+            })
+          })
+          const data = await res.json()
+          setScanStep('saved')
+          setBioSyncMsg(`Enrolled & saved biometric template for ${userName} to central database.`)
+          const updated = await fetch(`/api/devices/enrollment?deviceId=${encodeURIComponent(selectedBioSyncDevice.id)}`).then(r => r.json())
+          setBioSyncData(updated)
+          fetchDevices()
+        }, 1400)
+      }, 1200)
+    } catch (err) {
+      setBioSyncMsg('Interactive enrollment failed.')
+      setScanStep('idle')
+      setScanningUserId(null)
+    }
+  }
+
+  const handleSendSampleTelemetry = async (deviceId: string) => {
+    setTestTelemetryStatus("Sending sample ESP32 telemetry packet to backend...")
+    try {
+      const randomBatt = Math.floor(Math.random() * 8) + 88
+      const randomRssi = - (Math.floor(Math.random() * 15) + 48)
+      const randomHeap = `${Math.floor(Math.random() * 20) + 280} KB Free / 520 KB Total`
+      const res = await fetch('/api/devices/telemetry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deviceId,
+          wifiStatus: 'Connected',
+          rssi: randomRssi,
+          batteryStatus: randomBatt,
+          voltage: '4.19V (Nominal Li-ion)',
+          esp32Heap: randomHeap,
+          pendingRecords: 0,
+          firmwareVersion: 'AttendX-FW v2.4.1',
+          lcdText: [
+            '** ATTENDX TERMINAL **',
+            'Live Telemetry Push',
+            `WiFi: ${randomRssi}dBm | Bat:${randomBatt}%`,
+            `Status: HEALTHY [SYNC]`
+          ]
+        })
+      })
+      const data = await res.json()
+      setTestTelemetryStatus(`Success! Heartbeat acknowledged by backend at ${new Date(data.serverTime).toLocaleTimeString()}. Frontend state refreshed live.`)
+      fetchDevices()
+    } catch (err) {
+      setTestTelemetryStatus("Error dispatching test telemetry")
+    }
+  }
 
   const handleAddDevice = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -171,12 +321,20 @@ export default function DevicesPage() {
             Monitor, configure, and inspect physical ESP32 AttendX terminals, biometric sensors, and peripheral hardware.
           </p>
         </div>
-        <button 
-          onClick={() => { setIsAddModalOpen(true); setAddError(""); }}
-          className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors bg-blue-600 text-white hover:bg-blue-700 h-10 px-4 py-2 shadow-sm"
-        >
-          <Plus className="w-4 h-4 mr-2" /> Register New Terminal
-        </button>
+        <div className="flex items-center space-x-2">
+          <button 
+            onClick={() => { setIsApiSpecsModalOpen(true); setTestTelemetryStatus(null); }}
+            className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 h-10 px-4 py-2 shadow-sm"
+          >
+            <FileCode className="w-4 h-4 mr-2 text-indigo-600" /> ESP32 API & Payloads Guide
+          </button>
+          <button 
+            onClick={() => { setIsAddModalOpen(true); setAddError(""); }}
+            className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors bg-blue-600 text-white hover:bg-blue-700 h-10 px-4 py-2 shadow-sm"
+          >
+            <Plus className="w-4 h-4 mr-2" /> Register New Terminal
+          </button>
+        </div>
       </div>
 
       {/* Hardware Subsystem Summary Cards */}
@@ -345,7 +503,9 @@ export default function DevicesPage() {
                       </div>
                       <div className="flex items-center space-x-2 p-2 rounded bg-white border border-slate-200">
                         <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                        <span className="font-medium text-slate-700 truncate">SMF V1.7 Sensor</span>
+                        <span className="font-medium text-slate-700 truncate">
+                          SMF V1.7 ({device.enrolledFingerprints !== undefined ? device.enrolledFingerprints : 2} Enrolled)
+                        </span>
                       </div>
                       <div className="flex items-center space-x-2 p-2 rounded bg-white border border-slate-200">
                         <Terminal className="w-3.5 h-3.5 text-slate-600 flex-shrink-0" />
@@ -401,6 +561,15 @@ export default function DevicesPage() {
                         className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
                       >
                         <Eye className="w-3.5 h-3.5 mr-1.5" /> Inspect Hardware
+                      </button>
+
+                      {/* Biometric Provisioning & Enrol Button */}
+                      <button
+                        onClick={() => handleOpenBioSync(device)}
+                        className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 transition-colors font-semibold"
+                        title="Enroll database users or synchronize biometric fingerprint templates to this terminal"
+                      >
+                        <Fingerprint className="w-3.5 h-3.5 mr-1.5 text-indigo-600" /> Biometric Sync & Enrol
                       </button>
 
                       {/* Ping / Diagnostics */}
@@ -746,6 +915,487 @@ export default function DevicesPage() {
                   {actionLoading === "deleting" ? "Removing..." : "Confirm Removal"}
                 </button>
               </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Biometric User Enrollment & Provisioning Modal */}
+      {isBioSyncModalOpen && selectedBioSyncDevice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+          <Card className="w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl border-slate-200">
+            <CardHeader className="flex flex-row items-center justify-between border-b border-slate-100 pb-4 bg-slate-50/70">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 bg-indigo-100 text-indigo-700 rounded-lg">
+                  <Fingerprint className="w-6 h-6" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg font-bold text-slate-900">
+                    Biometric Enrollment & Hardware Provisioning
+                  </CardTitle>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Terminal: <strong className="text-slate-800">{selectedBioSyncDevice.name || selectedBioSyncDevice.id}</strong> ({selectedBioSyncDevice.id}) • Optical Sensor: SMF V1.7
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => { setIsBioSyncModalOpen(false); setSelectedBioSyncDevice(null); }} 
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </CardHeader>
+
+            <CardContent className="p-6 overflow-y-auto space-y-6">
+              {/* How it works banner */}
+              <div className="p-4 rounded-xl bg-indigo-50/70 border border-indigo-100 text-xs text-indigo-900 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2 font-bold text-indigo-950 text-sm">
+                    <Layers className="w-4 h-4 text-indigo-600" />
+                    <span>Central Database to ESP32 Flash Biometric Pipeline</span>
+                  </div>
+                  <span className="font-mono bg-indigo-200/70 text-indigo-900 px-2 py-0.5 rounded text-[11px]">
+                    GET /api/devices/enrollment
+                  </span>
+                </div>
+                <p className="text-indigo-800 leading-relaxed">
+                  When a new terminal is added to AttendX, it can synchronize all enrolled fingerprint templates stored in the central database directly into its on-board SMF V1.7 optical flash memory. Alternatively, you can trigger live on-terminal enrollment for any database user right here.
+                </p>
+              </div>
+
+              {/* Status Message */}
+              {bioSyncMsg && (
+                <div className="p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                    <span className="font-medium">{bioSyncMsg}</span>
+                  </div>
+                  <button onClick={() => setBioSyncMsg(null)} className="text-emerald-500 hover:text-emerald-700">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {/* Live Interactive Terminal Scan Simulation Area */}
+              {scanningUserId && (
+                <div className="p-4 rounded-xl bg-slate-900 text-white border border-slate-800 shadow-inner space-y-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-emerald-400 flex items-center">
+                      <Radio className="w-3.5 h-3.5 mr-1.5 animate-pulse text-emerald-400" />
+                      TERMINAL 20×4 LCD SCREEN (LIVE HARDWARE MIRROR)
+                    </span>
+                    <span className="font-mono text-slate-400">DEV: {selectedBioSyncDevice.id}</span>
+                  </div>
+
+                  <div className="font-mono text-xs bg-black/60 p-3 rounded border border-emerald-500/30 text-emerald-400 space-y-1">
+                    <div>[LINE 1] ** ENROLL USER **</div>
+                    <div>
+                      [LINE 2] {scanStep === 'prompted' ? 'ARMED: Place Finger' : scanStep === 'capturing' ? 'READING MINUTIAE...' : 'TEMPLATE SAVED OK'}
+                    </div>
+                    <div>
+                      [LINE 3] User ID: {scanningUserId}
+                    </div>
+                    <div>
+                      [LINE 4] {scanStep === 'capturing' ? 'Pass 2/2: Verifying' : scanStep === 'saved' ? 'Synced to Central DB' : 'SMF V1.7 UART Ready'}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <div className="flex items-center space-x-2 text-xs text-slate-300">
+                      <div className={cn(
+                        "w-2.5 h-2.5 rounded-full",
+                        scanStep === 'prompted' ? "bg-amber-400 animate-pulse" : scanStep === 'capturing' ? "bg-blue-400 animate-ping" : "bg-emerald-400"
+                      )} />
+                      <span>
+                        {scanStep === 'prompted' && "Waiting for finger placement on terminal optical prism..."}
+                        {scanStep === 'capturing' && "Extracting fingerprint ridge minutiae & compiling 512-byte template..."}
+                        {scanStep === 'saved' && "Enrollment complete! Template persisted to central database."}
+                      </span>
+                    </div>
+                    {scanStep === 'saved' && (
+                      <button
+                        onClick={() => setScanningUserId(null)}
+                        className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded shadow"
+                      >
+                        Dismiss Mirror
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Action: Sync All Database Templates to this Terminal */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200 gap-3">
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900">Synchronize All Database Templates</h4>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Push all active biometric templates from the central database into this terminal&apos;s local flash.
+                  </p>
+                </div>
+                <button
+                  onClick={handleSyncAllTemplates}
+                  disabled={bioSyncLoading}
+                  className="inline-flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors whitespace-nowrap"
+                >
+                  <Download className={cn("w-4 h-4 mr-2", bioSyncLoading && "animate-spin")} />
+                  {bioSyncLoading ? "Syncing Biometrics..." : "Sync All Templates to Terminal"}
+                </button>
+              </div>
+
+              {/* Database Users List with Biometric Status */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                    Database Users & Terminal Provisioning Status
+                  </h4>
+                  <span className="text-xs text-slate-500">
+                    {bioSyncData?.users.length || 0} Registered Database Users
+                  </span>
+                </div>
+
+                <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
+                  {bioSyncLoading && !bioSyncData ? (
+                    <div className="p-8 text-center text-sm text-slate-500">Loading database biometric records...</div>
+                  ) : bioSyncData?.users.map((u) => {
+                    const isEnrolledInDb = u.hasFingerprint
+                    const isEnrolledOnThisDev = u.isEnrolledOnThisTerminal
+
+                    return (
+                      <div key={u.userId} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/50 transition-colors">
+                        <div className="flex items-center space-x-3">
+                          <div className={cn(
+                            "p-2 rounded-lg text-xs font-bold",
+                            isEnrolledInDb ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"
+                          )}>
+                            <Fingerprint className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <div className="flex items-center space-x-2">
+                              <span className="font-semibold text-slate-900 text-sm">{u.name}</span>
+                              <span className="text-xs font-mono px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded">
+                                {u.userId}
+                              </span>
+                            </div>
+                            <div className="flex items-center space-x-3 text-xs text-slate-500 mt-1">
+                              <span>Role: <strong className="text-slate-700">{u.role}</strong></span>
+                              <span>•</span>
+                              <span>
+                                Central DB: {isEnrolledInDb ? (
+                                  <span className="text-emerald-700 font-semibold">Enrolled (Slot #{u.slotNumber})</span>
+                                ) : (
+                                  <span className="text-amber-600 font-medium">Pending Scan</span>
+                                )}
+                              </span>
+                              <span>•</span>
+                              <span>
+                                On Terminal: {isEnrolledOnThisDev ? (
+                                  <span className="text-blue-700 font-medium">Installed</span>
+                                ) : (
+                                  <span className="text-slate-400">Not Synced</span>
+                                )}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Action buttons per user */}
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => handleStartTerminalScan(u.userId, u.name)}
+                            disabled={scanningUserId !== null}
+                            className={cn(
+                              "inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md shadow-sm transition-colors",
+                              isEnrolledInDb
+                                ? "bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200"
+                                : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                            )}
+                          >
+                            <Radio className="w-3.5 h-3.5 mr-1.5" />
+                            {isEnrolledInDb ? "Re-scan on Terminal" : "Enroll on Terminal"}
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* ESP32 API & Payloads Guide Modal */}
+      {isApiSpecsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+          <Card className="w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl border-slate-200">
+            <CardHeader className="flex flex-row items-center justify-between border-b border-slate-100 pb-4 bg-slate-50/70">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 bg-blue-100 text-blue-700 rounded-lg">
+                  <FileCode className="w-6 h-6" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg font-bold text-slate-900">
+                    ESP32-to-Backend Hardware Telemetry & Biometric Structures
+                  </CardTitle>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Live API contract, JSON schemas, and firmware integration specifications
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsApiSpecsModalOpen(false)} 
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </CardHeader>
+
+            <CardContent className="p-6 overflow-y-auto space-y-6">
+              {/* Navigation Tabs */}
+              <div className="flex space-x-2 border-b border-slate-200 pb-2">
+                {[
+                  { id: 'telemetry', label: '1. Heartbeat & Telemetry' },
+                  { id: 'enrollment', label: '2. Biometric DB Enrollment' },
+                  { id: 'checkin', label: '3. Attendance Scans' },
+                  { id: 'evidence', label: '4. Camera Evidence (PIN)' },
+                ].map(t => (
+                  <button
+                    key={t.id}
+                    onClick={() => setApiSpecTab(t.id as any)}
+                    className={cn(
+                      "px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-colors",
+                      apiSpecTab === t.id
+                        ? "bg-blue-600 text-white shadow-sm"
+                        : "text-slate-600 hover:bg-slate-100"
+                    )}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Tab 1: Heartbeat & Telemetry */}
+              {apiSpecTab === 'telemetry' && (
+                <div className="space-y-4">
+                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2 py-1 rounded border border-blue-200">
+                        POST /api/devices/telemetry
+                      </span>
+                      <span className="text-xs text-slate-500">Interval: Every 30 seconds</span>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      The ESP32 dispatches this heartbeat to inform the backend of its online health, Wi-Fi RSSI signal strength, battery voltage, free heap memory, and current 20×4 LCD display lines. The backend updates the terminal record in real-time.
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-bold text-slate-700 mb-1.5">Expected ESP32 JSON Payload:</p>
+                    <pre className="p-4 bg-slate-900 text-slate-100 rounded-xl text-xs font-mono overflow-x-auto leading-relaxed border border-slate-800">
+{`{
+  "deviceId": "DEV_TERM_01",
+  "wifiStatus": "Connected",
+  "rssi": -58,
+  "ipAddress": "192.168.1.102",
+  "macAddress": "24:0A:C4:B8:3A:1E",
+  "powerStatus": "AC",
+  "batteryStatus": 92,
+  "voltage": "4.18V (Li-ion)",
+  "esp32Heap": "296 KB Free / 520 KB Total",
+  "pendingRecords": 0,
+  "firmwareVersion": "AttendX-FW v2.4.1",
+  "fingerprintStatus": "SMF V1.7 Ready (UART 57600)",
+  "cameraStatus": "ESP-CAM Standby (SVGA OV2640)",
+  "keypadStatus": "4x4 Matrix Active",
+  "lcdStatus": "20x4 I2C LCD Ready (0x27)",
+  "lcdText": [
+    "** ATTENDX TERMINAL **",
+    "Ready for Scan...",
+    "Time: 09:15 AM [SYNC]",
+    "Net: CONNECTED | Bat:92%"
+  ]
+}`}
+                    </pre>
+                  </div>
+
+                  {/* Interactive Live Telemetry Tester */}
+                  <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-emerald-900">Live Hardware Telemetry Simulation Tester</span>
+                      <button
+                        onClick={() => handleSendSampleTelemetry(devices[0]?.id || 'DEV_TERM_01')}
+                        className="inline-flex items-center px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded shadow-sm"
+                      >
+                        <Send className="w-3.5 h-3.5 mr-1.5" /> Send Sample Telemetry Packet
+                      </button>
+                    </div>
+                    <p className="text-xs text-emerald-800">
+                      Click the button above to simulate an incoming HTTP POST from an ESP32. You will observe the backend acknowledge the heartbeat and the UI immediately update the terminal stats.
+                    </p>
+                    {testTelemetryStatus && (
+                      <p className="text-xs font-mono text-emerald-950 font-medium bg-emerald-100 p-2 rounded">
+                        {testTelemetryStatus}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 2: Biometric DB Enrollment */}
+              {apiSpecTab === 'enrollment' && (
+                <div className="space-y-4">
+                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded border border-indigo-200">
+                        GET /api/devices/enrollment?deviceId=DEV_TERM_01
+                      </span>
+                      <span className="text-xs text-slate-500">Biometric Sync Pipeline</span>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      Allows any newly added terminal to download all user fingerprint templates from the central database and write them into its local SMF V1.7 optical flash slots. Also polls for any pending live enrollment jobs assigned to this terminal.
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-bold text-slate-700 mb-1.5">Backend Response (Templates & Jobs):</p>
+                    <pre className="p-4 bg-slate-900 text-slate-100 rounded-xl text-xs font-mono overflow-x-auto leading-relaxed border border-slate-800">
+{`{
+  "deviceId": "DEV_TERM_01",
+  "totalUsers": 3,
+  "totalEnrolledInDb": 2,
+  "users": [
+    {
+      "userId": "USR001",
+      "name": "John Doe",
+      "role": "Staff",
+      "hasFingerprint": true,
+      "slotNumber": 1,
+      "templateData": "SMF17_FP_USR001_SAMPLE_TEMPLATE_HEX_A5F90B2",
+      "isEnrolledOnThisTerminal": true
+    },
+    {
+      "userId": "USR003",
+      "name": "David Smith",
+      "role": "Consultant",
+      "hasFingerprint": false,
+      "slotNumber": 0,
+      "templateData": null,
+      "isEnrolledOnThisTerminal": false
+    }
+  ],
+  "pendingJob": {
+    "jobId": "JOB_1726915200000",
+    "deviceId": "DEV_TERM_01",
+    "userId": "USR003",
+    "userName": "David Smith",
+    "slotNumber": 3,
+    "status": "PENDING_SCAN"
+  }
+}`}
+                    </pre>
+                  </div>
+
+                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                    <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded border border-indigo-200">
+                      POST /api/devices/enrollment
+                    </span>
+                    <p className="text-xs text-slate-600">
+                      When the user places their finger on the terminal sensor, the ESP32 compiles the 512-byte template and posts it back with <code className="font-mono text-indigo-700">&quot;action&quot;: &quot;COMPLETE_ENROLLMENT&quot;</code>.
+                    </p>
+                    <pre className="p-3 bg-slate-900 text-slate-100 rounded-lg text-xs font-mono overflow-x-auto">
+{`{
+  "action": "COMPLETE_ENROLLMENT",
+  "deviceId": "DEV_TERM_01",
+  "userId": "USR003",
+  "slotNumber": 3,
+  "templateData": "SMF17_FP_USR003_ENROLLED_5C92B104F"
+}`}
+                    </pre>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 3: Attendance Scans */}
+              {apiSpecTab === 'checkin' && (
+                <div className="space-y-4">
+                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded border border-emerald-200">
+                        POST /api/attendance/checkin
+                      </span>
+                      <span className="text-xs text-slate-500">Real-time Scan or Offline SPIFFS Sync</span>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      Dispatched whenever a user verifies via fingerprint or PIN. Supports single real-time events as well as batch arrays uploaded from local flash buffer when Wi-Fi recovers.
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-bold text-slate-700 mb-1.5">Single Event or Batch Array Payload:</p>
+                    <pre className="p-4 bg-slate-900 text-slate-100 rounded-xl text-xs font-mono overflow-x-auto leading-relaxed border border-slate-800">
+{`// Single Live Verification:
+{
+  "deviceId": "DEV_TERM_01",
+  "userId": "USR001",
+  "authMode": "fingerprint",
+  "timestamp": "2026-09-21T08:52:14.000Z",
+  "offlineBuffered": false
+}
+
+// Or Batch Flash Upload (after outage recovery):
+{
+  "deviceId": "DEV_TERM_01",
+  "batch": [
+    { "userId": "USR001", "authMode": "fingerprint", "timestamp": "2026-09-21T08:52:14.000Z" },
+    { "userId": "USR002", "authMode": "pin", "timestamp": "2026-09-21T09:14:02.000Z" }
+  ]
+}`}
+                    </pre>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-bold text-slate-700 mb-1.5">Backend Response for 20×4 LCD:</p>
+                    <pre className="p-3 bg-slate-900 text-slate-100 rounded-lg text-xs font-mono overflow-x-auto">
+{`{
+  "success": true,
+  "processedCount": 1,
+  "displayMessage": "WELCOME, JOHN!",
+  "status": "Present"
+}`}
+                    </pre>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 4: Camera Evidence */}
+              {apiSpecTab === 'evidence' && (
+                <div className="space-y-4">
+                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-xs font-bold text-purple-700 bg-purple-50 px-2 py-1 rounded border border-purple-200">
+                        POST /api/attendance/evidence
+                      </span>
+                      <span className="text-xs text-slate-500">ESP-CAM OV2640 Snapshot</span>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      Triggered automatically by the terminal whenever attendance is logged via Keypad PIN fallback instead of biometric fingerprint. Prevents buddy-punching by attaching visual proof.
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-bold text-slate-700 mb-1.5">ESP-CAM Snapshot Payload:</p>
+                    <pre className="p-4 bg-slate-900 text-slate-100 rounded-xl text-xs font-mono overflow-x-auto leading-relaxed border border-slate-800">
+{`{
+  "deviceId": "DEV_TERM_01",
+  "attendanceId": "ATT_1726915200000_A9B",
+  "userId": "USR003",
+  "captureTime": "2026-09-21T09:15:30.000Z",
+  "imageBase64": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD..."
+}`}
+                    </pre>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

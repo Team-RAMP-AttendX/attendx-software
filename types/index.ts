@@ -20,6 +20,9 @@ export interface Fingerprint {
   userId: string;
   registrationDate: string;
   status: 'Active' | 'Inactive';
+  slotNumber?: number;
+  templateData?: string; // Hex or base64 representation of SMF V1.7 512-byte template
+  enrolledTerminals?: string[]; // Terminal IDs where this template is installed
 }
 
 export interface AttendanceRecord {
@@ -66,6 +69,8 @@ export interface Device {
   lcdStatus?: string;
   lcdText?: string[];
   voltage?: string;
+  rssi?: number;
+  enrolledFingerprints?: number;
 }
 
 export interface DatabaseSchema {

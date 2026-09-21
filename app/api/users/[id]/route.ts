@@ -31,11 +31,15 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
     if (body.enrollFingerprint) {
       // Remove any existing active fingerprint for this user
       db.fingerprints = db.fingerprints.filter(fp => fp.userId !== params.id);
+      const nextSlot = (Math.max(0, ...db.fingerprints.map(f => f.slotNumber || 0))) + 1;
       db.fingerprints.push({
         id: `FP_${String(Date.now()).slice(-6)}`,
         userId: params.id,
         registrationDate: new Date().toISOString(),
-        status: 'Active'
+        status: 'Active',
+        slotNumber: nextSlot,
+        templateData: `SMF17_FP_${params.id}_TEMPLATE_HEX_${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+        enrolledTerminals: body.terminalId ? [body.terminalId] : db.devices.map(d => d.id)
       });
     } else if (body.removeFingerprint) {
       db.fingerprints = db.fingerprints.filter(fp => fp.userId !== params.id);
