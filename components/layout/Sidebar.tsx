@@ -57,6 +57,18 @@ export function Sidebar() {
           })}
         </nav>
       </div>
+      <div className="p-4 border-t border-slate-800 bg-slate-950/40">
+        <div className="flex items-center space-x-2 text-xs">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+          <span className="font-medium text-slate-300">Cloud Firestore DB</span>
+        </div>
+        <p className="text-[11px] text-slate-500 mt-1 truncate" title="redemption-490717 (Live)">
+          Project: redemption-490717
+        </p>
+      </div>
     </div>
   )
 }

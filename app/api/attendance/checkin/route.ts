@@ -15,7 +15,16 @@ export async function POST(req: Request) {
     const todayStr = now.toISOString().split('T')[0];
 
     for (const item of recordsToProcess) {
-      const { deviceId, userId, authMode = 'fingerprint', timestamp, offlineBuffered } = item;
+      let { deviceId, userId, slotNumber, slot, authMode = 'fingerprint', timestamp, offlineBuffered } = item;
+
+      // Local Slot Mapping fallback for hackathon firmware
+      const targetSlot = slotNumber !== undefined ? Number(slotNumber) : (slot !== undefined ? Number(slot) : undefined);
+      if (!userId && targetSlot !== undefined) {
+        const fp = db.fingerprints.find(f => f.slotNumber === targetSlot && f.status === 'Active');
+        if (fp) {
+          userId = fp.userId;
+        }
+      }
 
       if (!userId) continue;
 

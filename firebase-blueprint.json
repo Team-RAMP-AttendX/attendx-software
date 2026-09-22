@@ -1,0 +1,119 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Registered students, faculty, and staff in AttendX",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["Student", "Staff", "Admin"] },
+        "status": { "type": "string", "enum": ["Active", "Inactive"] },
+        "dateRegistered": { "type": "string", "format": "date-time" },
+        "totalAttendance": { "type": "number" },
+        "lateOccurrences": { "type": "number" }
+      },
+      "required": ["id", "name", "role", "status"]
+    },
+    "Fingerprint": {
+      "title": "Fingerprint",
+      "description": "Biometric fingerprint registration and sensor slot assignment",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "registrationDate": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["Active", "Inactive"] },
+        "slotNumber": { "type": "number" },
+        "templateData": { "type": "string" },
+        "enrolledTerminals": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["id", "userId", "status"]
+    },
+    "AttendanceRecord": {
+      "title": "AttendanceRecord",
+      "description": "Attendance check-in and check-out verification log",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "deviceId": { "type": "string" },
+        "date": { "type": "string" },
+        "checkInTime": { "type": "string", "format": "date-time" },
+        "checkInMode": { "type": "string", "enum": ["fingerprint", "pin", "card", "face"] },
+        "checkOutTime": { "type": "string", "format": "date-time" },
+        "checkOutMode": { "type": "string", "enum": ["fingerprint", "pin", "card", "face"] },
+        "status": { "type": "string", "enum": ["Present", "Late", "Absent", "Excused"] },
+        "lateDurationMinutes": { "type": "number" },
+        "syncStatus": { "type": "string", "enum": ["Synced", "Pending", "Failed"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "deviceId", "date", "status"]
+    },
+    "Device": {
+      "title": "Device",
+      "description": "ESP32 AttendX IoT terminal device state and telemetry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "location": { "type": "string" },
+        "status": { "type": "string", "enum": ["ONLINE", "OFFLINE"] },
+        "wifiStatus": { "type": "string" },
+        "rssi": { "type": "number" },
+        "lastSync": { "type": "string", "format": "date-time" },
+        "pendingRecords": { "type": "number" },
+        "batteryStatus": { "type": "number" },
+        "powerStatus": { "type": "string" },
+        "ipAddress": { "type": "string" },
+        "macAddress": { "type": "string" },
+        "firmwareVersion": { "type": "string" },
+        "esp32Heap": { "type": "string" },
+        "fingerprintStatus": { "type": "string" },
+        "cameraStatus": { "type": "string" },
+        "keypadStatus": { "type": "string" },
+        "lcdStatus": { "type": "string" },
+        "lcdText": { "type": "array", "items": { "type": "string" } },
+        "voltage": { "type": "string" },
+        "enrolledFingerprints": { "type": "number" }
+      },
+      "required": ["id", "status"]
+    },
+    "PINImage": {
+      "title": "PINImage",
+      "description": "ESP-CAM photo evidence captured during PIN entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "attendanceId": { "type": "string" },
+        "userId": { "type": "string" },
+        "captureTime": { "type": "string", "format": "date-time" },
+        "authMode": { "type": "string" },
+        "storageRef": { "type": "string" }
+      },
+      "required": ["id", "userId", "captureTime"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile collection"
+    },
+    "/fingerprints/{fingerprintId}": {
+      "schema": "Fingerprint",
+      "description": "Biometric templates and hardware slot allocations"
+    },
+    "/attendance/{attendanceId}": {
+      "schema": "AttendanceRecord",
+      "description": "Biometric and PIN attendance logs"
+    },
+    "/devices/{deviceId}": {
+      "schema": "Device",
+      "description": "ESP32 terminals and telemetry status"
+    },
+    "/images/{imageId}": {
+      "schema": "PINImage",
+      "description": "Camera evidence images"
+    }
+  }
+}

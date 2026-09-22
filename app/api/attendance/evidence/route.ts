@@ -26,17 +26,45 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { deviceId, attendanceId, userId, imageBase64, storageRef } = body;
+    let deviceId = '';
+    let attendanceId = '';
+    let userId = '';
+    let imageBase64 = '';
+    let storageRef = '';
+
+    const contentType = req.headers.get('content-type') || '';
+
+    if (contentType.includes('multipart/form-data')) {
+      const formData = await req.formData();
+      deviceId = (formData.get('deviceId') as string) || '';
+      attendanceId = (formData.get('attendanceId') as string) || '';
+      userId = (formData.get('userId') as string) || '';
+      storageRef = (formData.get('storageRef') as string) || '';
+
+      const file = formData.get('image') || formData.get('file');
+      if (file && typeof file === 'object' && 'arrayBuffer' in file) {
+        const buffer = await (file as Blob).arrayBuffer();
+        const base64Data = Buffer.from(buffer).toString('base64');
+        const mimeType = (file as Blob).type || 'image/jpeg';
+        imageBase64 = `data:${mimeType};base64,${base64Data}`;
+      }
+    } else {
+      const body = await req.json();
+      deviceId = body.deviceId || '';
+      attendanceId = body.attendanceId || '';
+      userId = body.userId || '';
+      imageBase64 = body.imageBase64 || '';
+      storageRef = body.storageRef || '';
+    }
 
     if (!userId) {
-      return NextResponse.json({ error: 'userId is required' }, { status: 400 });
+      return NextResponse.json({ error: 'userId is required (form-data field "userId")' }, { status: 400 });
     }
 
     const db = await readDb();
     const user = db.users.find(u => u.id === userId);
     if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      return NextResponse.json({ error: `User with id ${userId} not found` }, { status: 404 });
     }
 
     const newImage = {
@@ -45,7 +73,7 @@ export async function POST(req: Request) {
       userId,
       captureTime: new Date().toISOString(),
       authMode: 'pin' as const,
-      storageRef: storageRef || imageBase64 || '/evidence/camera_capture_placeholder.jpg'
+      storageRef: imageBase64 || storageRef || '/evidence/camera_capture_placeholder.jpg'
     };
 
     db.images.unshift(newImage);
@@ -55,7 +83,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       image: newImage,
-      message: 'ESP-CAM photo evidence stored successfully'
+      message: 'ESP-CAM image received and stored successfully via streaming multipart upload.'
     }, { status: 201 });
   } catch (err) {
     console.error('Error storing evidence image:', err);

@@ -1154,10 +1154,10 @@ export default function DevicesPage() {
               {/* Navigation Tabs */}
               <div className="flex space-x-2 border-b border-slate-200 pb-2">
                 {[
-                  { id: 'telemetry', label: '1. Heartbeat & Telemetry' },
-                  { id: 'enrollment', label: '2. Biometric DB Enrollment' },
-                  { id: 'checkin', label: '3. Attendance Scans' },
-                  { id: 'evidence', label: '4. Camera Evidence (PIN)' },
+                  { id: 'telemetry', label: '1. Heartbeat & 16x2 / 20x4 LCD' },
+                  { id: 'enrollment', label: '2. Slot-to-User Mapping (Hackathon MVP)' },
+                  { id: 'checkin', label: '3. Attendance Scans (Slot or User)' },
+                  { id: 'evidence', label: '4. Multipart JPEG Streaming' },
                 ].map(t => (
                   <button
                     key={t.id}
@@ -1185,34 +1185,24 @@ export default function DevicesPage() {
                       <span className="text-xs text-slate-500">Interval: Every 30 seconds</span>
                     </div>
                     <p className="text-xs text-slate-600 leading-relaxed">
-                      The ESP32 dispatches this heartbeat to inform the backend of its online health, Wi-Fi RSSI signal strength, battery voltage, free heap memory, and current 20×4 LCD display lines. The backend updates the terminal record in real-time.
+                      The ESP32 dispatches this heartbeat to report Wi-Fi RSSI, battery voltage, free heap memory, and LCD display lines. Both 16×2 (2 lines) and 20×4 (4 lines) LCD displays are natively supported.
                     </p>
                   </div>
 
                   <div>
-                    <p className="text-xs font-bold text-slate-700 mb-1.5">Expected ESP32 JSON Payload:</p>
+                    <p className="text-xs font-bold text-slate-700 mb-1.5">16×2 LCD Payload (Hackathon Hardware):</p>
                     <pre className="p-4 bg-slate-900 text-slate-100 rounded-xl text-xs font-mono overflow-x-auto leading-relaxed border border-slate-800">
 {`{
   "deviceId": "DEV_TERM_01",
   "wifiStatus": "Connected",
   "rssi": -58,
-  "ipAddress": "192.168.1.102",
-  "macAddress": "24:0A:C4:B8:3A:1E",
-  "powerStatus": "AC",
   "batteryStatus": 92,
-  "voltage": "4.18V (Li-ion)",
-  "esp32Heap": "296 KB Free / 520 KB Total",
-  "pendingRecords": 0,
-  "firmwareVersion": "AttendX-FW v2.4.1",
-  "fingerprintStatus": "SMF V1.7 Ready (UART 57600)",
-  "cameraStatus": "ESP-CAM Standby (SVGA OV2640)",
-  "keypadStatus": "4x4 Matrix Active",
-  "lcdStatus": "20x4 I2C LCD Ready (0x27)",
+  "voltage": "4.18V",
+  "esp32Heap": "296 KB Free",
+  "lcdStatus": "16x2 I2C LCD Ready (0x27)",
   "lcdText": [
-    "** ATTENDX TERMINAL **",
-    "Ready for Scan...",
-    "Time: 09:15 AM [SYNC]",
-    "Net: CONNECTED | Bat:92%"
+    "ATTENDX TERMINAL",
+    "SCAN FINGER / PIN"
   ]
 }`}
                     </pre>
@@ -1244,71 +1234,46 @@ export default function DevicesPage() {
               {/* Tab 2: Biometric DB Enrollment */}
               {apiSpecTab === 'enrollment' && (
                 <div className="space-y-4">
-                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                  <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded border border-indigo-200">
-                        GET /api/devices/enrollment?deviceId=DEV_TERM_01
+                      <span className="font-mono text-xs font-bold text-amber-800 bg-amber-100 px-2 py-1 rounded">
+                        Hackathon Fast-Track: Slot Number Mapping
                       </span>
-                      <span className="text-xs text-slate-500">Biometric Sync Pipeline</span>
+                      <span className="text-xs text-amber-700 font-semibold">Zero UART Buffer Overhead</span>
                     </div>
-                    <p className="text-xs text-slate-600 leading-relaxed">
-                      Allows any newly added terminal to download all user fingerprint templates from the central database and write them into its local SMF V1.7 optical flash slots. Also polls for any pending live enrollment jobs assigned to this terminal.
+                    <p className="text-xs text-amber-900 leading-relaxed">
+                      You do <strong>not</strong> need to dump raw 512-byte character templates over UART from the AS608/SMF sensor! The optical sensor stores prints locally in Slot 1, 2, 3... When enrolling or scanning, simply reference the slot number. The backend maps slotNumber to the database user.
                     </p>
                   </div>
 
                   <div>
-                    <p className="text-xs font-bold text-slate-700 mb-1.5">Backend Response (Templates & Jobs):</p>
+                    <p className="text-xs font-bold text-slate-700 mb-1.5">1. Get Users and Their Assigned Sensor Slots:</p>
+                    <div className="font-mono text-xs text-indigo-700 bg-slate-100 p-2 rounded border border-slate-200 mb-2">
+                      GET /api/devices/enrollment?deviceId=DEV_TERM_01
+                    </div>
                     <pre className="p-4 bg-slate-900 text-slate-100 rounded-xl text-xs font-mono overflow-x-auto leading-relaxed border border-slate-800">
 {`{
-  "deviceId": "DEV_TERM_01",
   "totalUsers": 3,
-  "totalEnrolledInDb": 2,
   "users": [
-    {
-      "userId": "USR001",
-      "name": "John Doe",
-      "role": "Staff",
-      "hasFingerprint": true,
-      "slotNumber": 1,
-      "templateData": "SMF17_FP_USR001_SAMPLE_TEMPLATE_HEX_A5F90B2",
-      "isEnrolledOnThisTerminal": true
-    },
-    {
-      "userId": "USR003",
-      "name": "David Smith",
-      "role": "Consultant",
-      "hasFingerprint": false,
-      "slotNumber": 0,
-      "templateData": null,
-      "isEnrolledOnThisTerminal": false
-    }
-  ],
-  "pendingJob": {
-    "jobId": "JOB_1726915200000",
-    "deviceId": "DEV_TERM_01",
-    "userId": "USR003",
-    "userName": "David Smith",
-    "slotNumber": 3,
-    "status": "PENDING_SCAN"
-  }
+    { "userId": "USR001", "name": "John Doe", "slotNumber": 1, "hasFingerprint": true },
+    { "userId": "USR002", "name": "Sarah Connor", "slotNumber": 2, "hasFingerprint": true },
+    { "userId": "USR003", "name": "David Smith", "slotNumber": 3, "hasFingerprint": false }
+  ]
 }`}
                     </pre>
                   </div>
 
-                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                    <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded border border-indigo-200">
+                  <div>
+                    <p className="text-xs font-bold text-slate-700 mb-1.5">2. Complete Enrollment (Local Slot Only):</p>
+                    <div className="font-mono text-xs text-indigo-700 bg-slate-100 p-2 rounded border border-slate-200 mb-2">
                       POST /api/devices/enrollment
-                    </span>
-                    <p className="text-xs text-slate-600">
-                      When the user places their finger on the terminal sensor, the ESP32 compiles the 512-byte template and posts it back with <code className="font-mono text-indigo-700">&quot;action&quot;: &quot;COMPLETE_ENROLLMENT&quot;</code>.
-                    </p>
+                    </div>
                     <pre className="p-3 bg-slate-900 text-slate-100 rounded-lg text-xs font-mono overflow-x-auto">
 {`{
   "action": "COMPLETE_ENROLLMENT",
   "deviceId": "DEV_TERM_01",
   "userId": "USR003",
-  "slotNumber": 3,
-  "templateData": "SMF17_FP_USR003_ENROLLED_5C92B104F"
+  "slotNumber": 3
 }`}
                     </pre>
                   </div>
@@ -1326,40 +1291,36 @@ export default function DevicesPage() {
                       <span className="text-xs text-slate-500">Real-time Scan or Offline SPIFFS Sync</span>
                     </div>
                     <p className="text-xs text-slate-600 leading-relaxed">
-                      Dispatched whenever a user verifies via fingerprint or PIN. Supports single real-time events as well as batch arrays uploaded from local flash buffer when Wi-Fi recovers.
+                      When the AS608 optical sensor identifies a finger, the ESP32 can send either the resolved <code>userId</code> OR just the sensor <code>slotNumber</code> directly!
                     </p>
                   </div>
 
                   <div>
-                    <p className="text-xs font-bold text-slate-700 mb-1.5">Single Event or Batch Array Payload:</p>
+                    <p className="text-xs font-bold text-slate-700 mb-1.5">Sending via Slot Number (Simplest for ESP32):</p>
                     <pre className="p-4 bg-slate-900 text-slate-100 rounded-xl text-xs font-mono overflow-x-auto leading-relaxed border border-slate-800">
-{`// Single Live Verification:
+{`// When AS608 reports match at Slot 3:
 {
   "deviceId": "DEV_TERM_01",
-  "userId": "USR001",
-  "authMode": "fingerprint",
-  "timestamp": "2026-09-21T08:52:14.000Z",
-  "offlineBuffered": false
+  "slotNumber": 3,
+  "authMode": "fingerprint"
 }
 
-// Or Batch Flash Upload (after outage recovery):
+// Or with userId:
 {
   "deviceId": "DEV_TERM_01",
-  "batch": [
-    { "userId": "USR001", "authMode": "fingerprint", "timestamp": "2026-09-21T08:52:14.000Z" },
-    { "userId": "USR002", "authMode": "pin", "timestamp": "2026-09-21T09:14:02.000Z" }
-  ]
+  "userId": "USR003",
+  "authMode": "fingerprint"
 }`}
                     </pre>
                   </div>
 
                   <div>
-                    <p className="text-xs font-bold text-slate-700 mb-1.5">Backend Response for 20×4 LCD:</p>
+                    <p className="text-xs font-bold text-slate-700 mb-1.5">Backend Response for 16×2 LCD:</p>
                     <pre className="p-3 bg-slate-900 text-slate-100 rounded-lg text-xs font-mono overflow-x-auto">
 {`{
   "success": true,
   "processedCount": 1,
-  "displayMessage": "WELCOME, JOHN!",
+  "displayMessage": "WELCOME, DAVID!",
   "status": "Present"
 }`}
                     </pre>
@@ -1370,29 +1331,35 @@ export default function DevicesPage() {
               {/* Tab 4: Camera Evidence */}
               {apiSpecTab === 'evidence' && (
                 <div className="space-y-4">
-                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                  <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200 space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="font-mono text-xs font-bold text-purple-700 bg-purple-50 px-2 py-1 rounded border border-purple-200">
-                        POST /api/attendance/evidence
+                      <span className="font-mono text-xs font-bold text-emerald-800 bg-emerald-100 px-2 py-1 rounded border border-emerald-300">
+                        POST /api/attendance/evidence (multipart/form-data)
                       </span>
-                      <span className="text-xs text-slate-500">ESP-CAM OV2640 Snapshot</span>
+                      <span className="text-xs text-emerald-700 font-semibold">Zero PSRAM Base64 Overhead</span>
                     </div>
-                    <p className="text-xs text-slate-600 leading-relaxed">
-                      Triggered automatically by the terminal whenever attendance is logged via Keypad PIN fallback instead of biometric fingerprint. Prevents buddy-punching by attaching visual proof.
+                    <p className="text-xs text-emerald-900 leading-relaxed">
+                      <strong>Optimized for ESP32-S3!</strong> The backend now accepts standard <code>multipart/form-data</code>. The ESP32 can stream raw JPEG bytes directly from the camera frame buffer (<code>fb-&gt;buf</code>) without base64 conversion.
                     </p>
                   </div>
 
                   <div>
-                    <p className="text-xs font-bold text-slate-700 mb-1.5">ESP-CAM Snapshot Payload:</p>
+                    <p className="text-xs font-bold text-slate-700 mb-1.5">C++ / Arduino HTTPClient Example:</p>
                     <pre className="p-4 bg-slate-900 text-slate-100 rounded-xl text-xs font-mono overflow-x-auto leading-relaxed border border-slate-800">
-{`{
-  "deviceId": "DEV_TERM_01",
-  "attendanceId": "ATT_1726915200000_A9B",
-  "userId": "USR003",
-  "captureTime": "2026-09-21T09:15:30.000Z",
-  "imageBase64": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD..."
-}`}
+{`// Send raw camera_fb_t* fb directly:
+String boundary = "----ESP32Boundary1234";
+http.begin("https://ais-dev-.../api/attendance/evidence");
+http.addHeader("Content-Type", "multipart/form-data; boundary=" + boundary);
+
+// Form data fields:
+// 1. userId (text): "USR003"
+// 2. deviceId (text): "DEV_TERM_01"
+// 3. image (binary): raw fb->buf bytes, size: fb->len`}
                     </pre>
+                  </div>
+
+                  <div className="p-3 bg-slate-100 rounded-lg text-xs text-slate-600">
+                    <span className="font-semibold text-slate-800">Note:</span> JSON with Base64 is also still supported as a fallback, but multipart streaming is recommended for stable memory performance.
                   </div>
                 </div>
               )}
