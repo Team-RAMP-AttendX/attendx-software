@@ -37,7 +37,7 @@ export async function POST(req: Request) {
     if (contentType.includes('multipart/form-data')) {
       const formData = await req.formData();
       deviceId = (formData.get('deviceId') as string) || '';
-      attendanceId = (formData.get('attendanceId') as string) || '';
+      attendanceId = (formData.get('attendanceId') as string) || (formData.get('eventId') as string) || '';
       userId = (formData.get('userId') as string) || '';
       storageRef = (formData.get('storageRef') as string) || '';
 
@@ -67,9 +67,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: `User with id ${userId} not found` }, { status: 404 });
     }
 
+    // If attendanceId wasn't passed, find the most recent checkin for this user today to link accurately
+    let linkedAttendanceId = attendanceId;
+    if (!linkedAttendanceId) {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const recentRecord = [...db.attendance]
+        .reverse()
+        .find(a => a.userId === userId && a.date === todayStr);
+      if (recentRecord) {
+        linkedAttendanceId = recentRecord.id;
+      }
+    }
+
     const newImage = {
       id: `IMG_${Date.now()}_${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
-      attendanceId: attendanceId || `ATT_${Date.now()}`,
+      attendanceId: linkedAttendanceId || `ATT_${Date.now()}`,
       userId,
       captureTime: new Date().toISOString(),
       authMode: 'pin' as const,

@@ -71,6 +71,49 @@ export interface Device {
   voltage?: string;
   rssi?: number;
   enrolledFingerprints?: number;
+  maxSlots?: number;
+  freeSlots?: number;
+  heartbeatIntervalSeconds?: number;
+  pinFallbackEnabled?: boolean;
+  cameraEvidenceEnabled?: boolean;
+}
+
+export interface Administrator {
+  id: string;
+  email: string;
+  name: string;
+  role: 'Master Administrator' | 'Security Officer' | 'Attendance Supervisor' | 'System Operator';
+  status: 'Active' | 'Suspended';
+  isMaster: boolean;
+  addedAt: string;
+  addedBy?: string;
+  lastLoginAt?: string;
+  notes?: string;
+}
+
+export interface TerminalCommand {
+  commandId: string;
+  type: 'ENROLL_FINGERPRINT' | 'DELETE_FINGERPRINT' | 'REBOOT' | 'CLEAR_RECORDS';
+  deviceId: string;
+  userId?: string;
+  slotNumber?: number;
+  status: 'PENDING' | 'DISPATCHED' | 'EXECUTING' | 'COMPLETED' | 'FAILED';
+  createdAt: string;
+  dispatchedAt?: string;
+  completedAt?: string;
+  errorReason?: string;
+}
+
+export interface CommandResultReport {
+  deviceId: string;
+  commandId?: string;
+  type: 'ENROLL_FINGERPRINT' | 'DELETE_FINGERPRINT';
+  status: 'success' | 'error';
+  source?: 'dashboard' | 'terminal';
+  userId?: string;
+  slotNumber?: number;
+  errorReason?: string;
+  timestamp: string;
 }
 
 export interface DatabaseSchema {
@@ -79,4 +122,6 @@ export interface DatabaseSchema {
   attendance: AttendanceRecord[];
   images: PINImage[];
   devices: Device[];
+  administrators?: Administrator[];
+  commands?: TerminalCommand[];
 }

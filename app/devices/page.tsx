@@ -5,10 +5,13 @@ import {
   HardDrive, Wifi, WifiOff, Battery, Plug, Activity, Clock, 
   Plus, Trash2, RefreshCw, Cpu, Camera, Terminal, CheckCircle2, 
   AlertTriangle, X, Radio, Eye, Zap, ShieldCheck, FileCode,
-  Fingerprint, BookOpen, Send, Check, Layers, Download
+  Fingerprint, BookOpen, Send, Check, Layers, Download, Settings
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Device } from '@/types'
+import { EnrollFingerprintModal } from '@/components/devices/EnrollFingerprintModal'
+import { ConfigureTerminalModal } from '@/components/devices/ConfigureTerminalModal'
+import { useSystemMode } from '@/context/SystemModeContext'
 
 export default function DevicesPage() {
   const [devices, setDevices] = useState<Device[]>([])
@@ -21,6 +24,10 @@ export default function DevicesPage() {
   const [deviceToDelete, setDeviceToDelete] = useState<Device | null>(null)
   const [isApiSpecsModalOpen, setIsApiSpecsModalOpen] = useState(false)
   const [apiSpecTab, setApiSpecTab] = useState<'telemetry' | 'enrollment' | 'checkin' | 'evidence'>('telemetry')
+
+  // Dedicated Enroll Fingerprint & Terminal Configuration Modals
+  const [deviceToEnroll, setDeviceToEnroll] = useState<Device | null>(null)
+  const [deviceToConfigure, setDeviceToConfigure] = useState<Device | null>(null)
 
   // Biometric Enrollment & Sync Modal
   const [isBioSyncModalOpen, setIsBioSyncModalOpen] = useState(false)
@@ -52,24 +59,49 @@ export default function DevicesPage() {
   const [newPowerStatus, setNewPowerStatus] = useState<"AC" | "Battery">("AC")
   const [addError, setAddError] = useState("")
 
+  const { isSimulationMode, simState } = useSystemMode()
+
   // Diagnostics status message
   const [diagnosticResult, setDiagnosticResult] = useState<{ id: string; message: string } | null>(null)
 
   const fetchDevices = useCallback(() => {
+    if (isSimulationMode) return
+
     fetch('/api/devices')
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to load devices')
+        return res.json()
+      })
       .then(data => {
-        setDevices(data)
+        if (Array.isArray(data)) {
+          setDevices(data)
+        }
       })
       .catch(console.error)
       .finally(() => {
         setLoading(false)
       })
-  }, [])
+  }, [isSimulationMode])
 
   useEffect(() => {
-    fetchDevices()
-  }, [fetchDevices])
+    let active = true
+    if (!isSimulationMode) {
+      fetch('/api/devices')
+        .then(res => res.json())
+        .then(data => {
+          if (active && Array.isArray(data)) {
+            setDevices(data)
+            setLoading(false)
+          }
+        })
+        .catch(() => {
+          if (active) setLoading(false)
+        })
+    }
+    return () => { active = false }
+  }, [isSimulationMode])
+
+  const activeDevices = isSimulationMode ? simState.devices : devices
 
   const handleOpenBioSync = async (device: Device) => {
     setSelectedBioSyncDevice(device)
@@ -121,8 +153,8 @@ export default function DevicesPage() {
     setScanStep('prompted')
     setBioSyncMsg(null)
     try {
-      // 1. Arm terminal via backend
-      await fetch('/api/devices/enrollment', {
+      // 1. Arm physical terminal via backend
+      const armRes = await fetch('/api/devices/enrollment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -131,31 +163,51 @@ export default function DevicesPage() {
           userId
         })
       })
-      
-      // Simulate live optical sensor interaction
-      setTimeout(() => {
-        setScanStep('capturing')
-        setTimeout(async () => {
-          const res = await fetch('/api/devices/enrollment', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              action: 'COMPLETE_ENROLLMENT',
-              deviceId: selectedBioSyncDevice.id,
-              userId,
-              templateData: `SMF17_FP_${userId}_ENROLLED_${Math.random().toString(36).substring(2, 8).toUpperCase()}`
-            })
-          })
-          const data = await res.json()
-          setScanStep('saved')
-          setBioSyncMsg(`Enrolled & saved biometric template for ${userName} to central database.`)
-          const updated = await fetch(`/api/devices/enrollment?deviceId=${encodeURIComponent(selectedBioSyncDevice.id)}`).then(r => r.json())
-          setBioSyncData(updated)
-          fetchDevices()
-        }, 1400)
-      }, 1200)
+      const armData = await armRes.json()
+      const currentJobId = armData.job?.jobId
+
+      setBioSyncMsg(`Terminal ${selectedBioSyncDevice.id} armed for ${userName}. Awaiting physical finger placement...`)
+      setScanStep('capturing')
+
+      // 2. Poll real hardware completion from the ESP32 terminal
+      let attempts = 0
+      const maxAttempts = 30
+      const pollTimer = setInterval(async () => {
+        attempts++
+        try {
+          const pollRes = await fetch(`/api/devices/enrollment?jobId=${currentJobId}&deviceId=${encodeURIComponent(selectedBioSyncDevice.id)}`)
+          if (pollRes.ok) {
+            const pollData = await pollRes.json()
+            if (pollData.status === 'COMPLETED') {
+              clearInterval(pollTimer)
+              setScanStep('saved')
+              setBioSyncMsg(`Hardware Confirmed: Enrolled & saved biometric fingerprint for ${userName} to database!`)
+              const updated = await fetch(`/api/devices/enrollment?deviceId=${encodeURIComponent(selectedBioSyncDevice.id)}`).then(r => r.json())
+              setBioSyncData(updated)
+              fetchDevices()
+              return
+            } else if (pollData.status === 'FAILED') {
+              clearInterval(pollTimer)
+              setScanStep('idle')
+              setScanningUserId(null)
+              setBioSyncMsg(`Terminal reported enrollment failure: ${pollData.job?.reason || 'Sensor timeout'}`)
+              return
+            }
+          }
+        } catch {
+          // Keep polling
+        }
+
+        if (attempts >= maxAttempts) {
+          clearInterval(pollTimer)
+          setScanStep('idle')
+          setScanningUserId(null)
+          setBioSyncMsg(`Optical scan timed out after 60s without finger placement.`)
+        }
+      }, 2000)
+
     } catch (err) {
-      setBioSyncMsg('Interactive enrollment failed.')
+      setBioSyncMsg('Interactive enrollment command failed to reach terminal.')
       setScanStep('idle')
       setScanningUserId(null)
     }
@@ -306,10 +358,10 @@ export default function DevicesPage() {
     }
   }
 
-  const totalTerminals = devices.length
-  const onlineTerminals = devices.filter(d => d.status === 'ONLINE').length
-  const offlineTerminals = devices.filter(d => d.status === 'OFFLINE').length
-  const totalPendingSync = devices.reduce((sum, d) => sum + (d.pendingRecords || 0), 0)
+  const totalTerminals = activeDevices.length
+  const onlineTerminals = activeDevices.filter(d => d.status === 'ONLINE').length
+  const offlineTerminals = activeDevices.filter(d => d.status === 'OFFLINE').length
+  const totalPendingSync = activeDevices.reduce((sum, d) => sum + (d.pendingRecords || 0), 0)
 
   return (
     <div className="space-y-6">
@@ -322,6 +374,15 @@ export default function DevicesPage() {
           </p>
         </div>
         <div className="flex items-center space-x-2">
+          <a
+            href="/contract-response.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors bg-emerald-50 border border-emerald-300 text-emerald-800 hover:bg-emerald-100 h-10 px-4 py-2 shadow-sm"
+            title="Download / Print the signed contract response PDF for the firmware engineer"
+          >
+            <Download className="w-4 h-4 mr-2 text-emerald-700" /> Firmware Contract PDF
+          </a>
           <button 
             onClick={() => { setIsApiSpecsModalOpen(true); setTestTelemetryStatus(null); }}
             className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 h-10 px-4 py-2 shadow-sm"
@@ -386,7 +447,7 @@ export default function DevicesPage() {
           <div className="h-64 bg-slate-100 rounded-xl animate-pulse"></div>
           <div className="h-64 bg-slate-100 rounded-xl animate-pulse"></div>
         </div>
-      ) : devices.length === 0 ? (
+      ) : activeDevices.length === 0 ? (
         <Card className="p-12 text-center border-slate-200">
           <HardDrive className="w-12 h-12 text-slate-300 mx-auto mb-3" />
           <h3 className="text-base font-bold text-slate-800">No Terminals Registered</h3>
@@ -402,7 +463,7 @@ export default function DevicesPage() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-          {devices.map(device => {
+          {activeDevices.map(device => {
             const isOnline = device.status === 'ONLINE'
             const isWifiConnected = device.wifiStatus === 'Connected'
             const isAcPowered = device.powerStatus === 'AC'
@@ -552,24 +613,52 @@ export default function DevicesPage() {
                     </div>
                   )}
 
+                  {/* Optical Sensor Slot Utilization Bar */}
+                  <div className="p-3 bg-indigo-50/60 rounded-lg border border-indigo-100 space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-indigo-950 flex items-center">
+                        <HardDrive className="w-3.5 h-3.5 mr-1.5 text-indigo-600" />
+                        Sensor Storage: <strong>{device.enrolledFingerprints !== undefined ? device.enrolledFingerprints : 2} Enrolled</strong> vs <strong>{device.freeSlots !== undefined ? device.freeSlots : Math.max(0, (device.maxSlots || 300) - (device.enrolledFingerprints !== undefined ? device.enrolledFingerprints : 2))} Free</strong>
+                      </span>
+                      <span className="font-mono text-indigo-700 text-[11px]">
+                        Max: {device.maxSlots || 300} Slots
+                      </span>
+                    </div>
+                    <div className="w-full bg-indigo-200/60 h-2 rounded-full overflow-hidden flex">
+                      <div 
+                        className="bg-indigo-600 h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(100, (((device.enrolledFingerprints !== undefined ? device.enrolledFingerprints : 2) / (device.maxSlots || 300)) * 100))}%` }}
+                      />
+                    </div>
+                  </div>
+
                   {/* Interactive Terminal Management Actions Bar */}
                   <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center space-x-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* 1. Enrol Fingerprint Button */}
+                      <button
+                        onClick={() => setDeviceToEnroll(device)}
+                        className="inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-md bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition-colors"
+                        title="Enroll a user fingerprint directly on this terminal's optical scanner"
+                      >
+                        <Fingerprint className="w-3.5 h-3.5 mr-1.5" /> Enrol Fingerprint
+                      </button>
+
+                      {/* 2. Configure Terminal Button */}
+                      <button
+                        onClick={() => setDeviceToConfigure(device)}
+                        className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 transition-colors"
+                        title="Configure terminal parameters, max slots, LCD message, and fallback options"
+                      >
+                        <Settings className="w-3.5 h-3.5 mr-1.5 text-slate-600" /> Configure
+                      </button>
+
                       {/* Inspect Hardware Button */}
                       <button
                         onClick={() => setSelectedDeviceDetails(device)}
-                        className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+                        className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition-colors"
                       >
                         <Eye className="w-3.5 h-3.5 mr-1.5" /> Inspect Hardware
-                      </button>
-
-                      {/* Biometric Provisioning & Enrol Button */}
-                      <button
-                        onClick={() => handleOpenBioSync(device)}
-                        className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 transition-colors font-semibold"
-                        title="Enroll database users or synchronize biometric fingerprint templates to this terminal"
-                      >
-                        <Fingerprint className="w-3.5 h-3.5 mr-1.5 text-indigo-600" /> Biometric Sync & Enrol
                       </button>
 
                       {/* Ping / Diagnostics */}
@@ -1276,6 +1365,27 @@ export default function DevicesPage() {
   "slotNumber": 3
 }`}
                     </pre>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      <strong>Backend Response:</strong> Returns <code>status: &quot;SUCCESS&quot;</code>, <code>enrolledSlots</code> count, and <code>freeSlots</code> remaining.
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-bold text-slate-700 mb-1.5">3. Report Enrollment Failure (Optical Timeout/Noise):</p>
+                    <div className="font-mono text-xs text-rose-700 bg-slate-100 p-2 rounded border border-slate-200 mb-2">
+                      POST /api/devices/enrollment
+                    </div>
+                    <pre className="p-3 bg-slate-900 text-slate-100 rounded-lg text-xs font-mono overflow-x-auto">
+{`{
+  "action": "REPORT_FAILURE",
+  "deviceId": "DEV_TERM_01",
+  "userId": "USR003",
+  "reason": "Sensor timeout: finger removed before 2nd scan completed"
+}`}
+                    </pre>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Instantly alerts the web dashboard with the exact failure reason and updates LCD.
+                    </p>
                   </div>
                 </div>
               )}
@@ -1366,6 +1476,30 @@ http.addHeader("Content-Type", "multipart/form-data; boundary=" + boundary);
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* Dedicated Interactive Enroll Fingerprint Modal */}
+      {deviceToEnroll && (
+        <EnrollFingerprintModal
+          device={deviceToEnroll}
+          isOpen={!!deviceToEnroll}
+          onClose={() => setDeviceToEnroll(null)}
+          onSuccess={() => {
+            fetchDevices()
+          }}
+        />
+      )}
+
+      {/* Terminal Configuration Modal */}
+      {deviceToConfigure && (
+        <ConfigureTerminalModal
+          device={deviceToConfigure}
+          isOpen={!!deviceToConfigure}
+          onClose={() => setDeviceToConfigure(null)}
+          onSuccess={() => {
+            fetchDevices()
+          }}
+        />
       )}
     </div>
   )

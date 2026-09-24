@@ -103,8 +103,11 @@ export async function POST(req: Request) {
     const user = db.users.find(u => u.id === firstResult?.userId);
 
     return NextResponse.json({
+      ok: true,
       success: true,
       processedCount: results.length,
+      attendanceId: firstResult?.id,
+      eventId: firstResult?.id,
       records: results,
       displayMessage: user ? `WELCOME, ${user.name.split(' ')[0]}!` : 'ATTENDANCE LOGGED',
       status: firstResult?.status || 'Present'

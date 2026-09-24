@@ -92,6 +92,24 @@
         "storageRef": { "type": "string" }
       },
       "required": ["id", "userId", "captureTime"]
+    },
+    "Administrator": {
+      "title": "Administrator",
+      "description": "Provisioned system administrators authorized to receive OTP and manage AttendX",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["Master Administrator", "Security Officer", "Attendance Supervisor", "System Operator"] },
+        "status": { "type": "string", "enum": ["Active", "Suspended"] },
+        "isMaster": { "type": "boolean" },
+        "addedAt": { "type": "string", "format": "date-time" },
+        "addedBy": { "type": "string" },
+        "lastLoginAt": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string" }
+      },
+      "required": ["id", "email", "name", "role", "status", "isMaster"]
     }
   },
   "firestore": {
@@ -114,6 +132,10 @@
     "/images/{imageId}": {
       "schema": "PINImage",
       "description": "Camera evidence images"
+    },
+    "/administrators/{adminId}": {
+      "schema": "Administrator",
+      "description": "Authorized administrator registry for OTP authentication"
     }
   }
 }

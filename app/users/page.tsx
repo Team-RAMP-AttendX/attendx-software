@@ -7,11 +7,12 @@ import {
   Edit, Trash2, Eye, KeyRound, CheckCircle2, AlertCircle, RefreshCw 
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useSystemMode } from '@/context/SystemModeContext'
 
 interface UserItem {
   id: string
   name: string
-  role: 'Student' | 'Staff'
+  role: 'Student' | 'Staff' | 'Admin'
   status: 'Active' | 'Inactive'
   dateRegistered: string
   totalAttendance: number
@@ -36,7 +37,7 @@ export default function UsersPage() {
   // Add User Modal
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [newName, setNewName] = useState("")
-  const [newRole, setNewRole] = useState<"Student" | "Staff">("Student")
+  const [newRole, setNewRole] = useState<"Student" | "Staff" | "Admin">("Student")
   const [isAdding, setIsAdding] = useState(false)
   
   // Actions Dropdown & Modals
@@ -44,7 +45,7 @@ export default function UsersPage() {
   const [viewingUser, setViewingUser] = useState<UserItem | null>(null)
   const [editingUser, setEditingUser] = useState<UserItem | null>(null)
   const [editName, setEditName] = useState("")
-  const [editRole, setEditRole] = useState<"Student" | "Staff">("Student")
+  const [editRole, setEditRole] = useState<"Student" | "Staff" | "Admin">("Student")
   const [editStatus, setEditStatus] = useState<"Active" | "Inactive">("Active")
   const [isSavingEdit, setIsSavingEdit] = useState(false)
 
@@ -60,11 +61,15 @@ export default function UsersPage() {
   const [pinError, setPinError] = useState("")
   const [isSavingPin, setIsSavingPin] = useState(false)
 
+  const { isSimulationMode, simState } = useSystemMode()
+
   // Delete User Confirmation
   const [deletingUser, setDeletingUser] = useState<UserItem | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
   const fetchUsers = useCallback(() => {
+    if (isSimulationMode) return
+
     fetch('/api/users')
       .then(res => res.json())
       .then(data => {
@@ -74,15 +79,38 @@ export default function UsersPage() {
       .finally(() => {
         setLoading(false)
       })
-  }, [])
+  }, [isSimulationMode])
 
   useEffect(() => {
-    fetchUsers()
-
+    let active = true
+    if (!isSimulationMode) {
+      fetch('/api/users')
+        .then(res => res.json())
+        .then(data => {
+          if (active && Array.isArray(data)) {
+            setUsers(data)
+            setLoading(false)
+          }
+        })
+        .catch(() => {
+          if (active) setLoading(false)
+        })
+    }
     const handleClickOutside = () => setOpenDropdown(null)
     document.addEventListener('click', handleClickOutside)
-    return () => document.removeEventListener('click', handleClickOutside)
-  }, [fetchUsers])
+    return () => {
+      active = false
+      document.removeEventListener('click', handleClickOutside)
+    }
+  }, [isSimulationMode])
+
+  const displayedUsers: UserItem[] = isSimulationMode
+    ? simState.users.map(u => ({
+        ...u,
+        hasFingerprint: true,
+        hasPin: true
+      }))
+    : users
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -214,7 +242,7 @@ export default function UsersPage() {
     }
   }
 
-  const filteredUsers = users.filter(user => {
+  const filteredUsers = displayedUsers.filter(user => {
     const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) || user.id.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesRole = roleFilter === "All Roles" || user.role === roleFilter
     const matchesStatus = statusFilter === "All Status" || user.status === statusFilter

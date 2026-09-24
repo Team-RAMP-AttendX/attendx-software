@@ -17,5 +17,8 @@ service cloud.firestore {
     match /images/{imageId} {
       allow read, write: if true;
     }
+    match /administrators/{adminId} {
+      allow read, write: if true;
+    }
   }
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { readDb, writeDb } from '@/lib/db';
+import { readDb, writeDb, queueCommandForDevice } from '@/lib/db';
 import { Fingerprint } from '@/types';
 
 // In-memory active enrollment queue for ESP terminals (waiting for finger placement)
@@ -10,6 +10,8 @@ interface PendingEnrollmentJob {
   userName: string;
   slotNumber: number;
   status: 'PENDING_SCAN' | 'SCANNING' | 'COMPLETED' | 'FAILED';
+  reason?: string;
+  completedAt?: string;
   createdAt: string;
 }
 
@@ -19,6 +21,17 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const deviceId = searchParams.get('deviceId')?.trim().toUpperCase();
+    const jobId = searchParams.get('jobId')?.trim();
+
+    // Direct job status lookup for UI polling
+    if (jobId) {
+      const foundJob = pendingJobs.find(j => j.jobId === jobId);
+      return NextResponse.json({
+        jobId,
+        status: foundJob ? foundJob.status : 'NOT_FOUND',
+        job: foundJob || null
+      });
+    }
 
     const db = await readDb();
 
@@ -40,10 +53,20 @@ export async function GET(req: Request) {
     // Check if there is a pending live enrollment job waiting on this terminal
     const terminalJob = deviceId ? pendingJobs.find(j => j.deviceId === deviceId && j.status === 'PENDING_SCAN') : null;
 
+    const device = deviceId ? db.devices.find(d => d.id === deviceId) : null;
+    const maxSlots = device?.maxSlots || 300;
+    const terminalEnrolledCount = deviceId 
+      ? db.fingerprints.filter(f => f.status === 'Active' && f.enrolledTerminals?.includes(deviceId)).length
+      : db.fingerprints.filter(f => f.status === 'Active').length;
+    const freeSlots = Math.max(0, maxSlots - terminalEnrolledCount);
+
     return NextResponse.json({
       deviceId: deviceId || 'ALL',
       totalUsers: db.users.length,
       totalEnrolledInDb: db.fingerprints.filter(f => f.status === 'Active').length,
+      maxSlots,
+      terminalEnrolledCount,
+      freeSlots,
       users: usersWithFingerprints,
       pendingJob: terminalJob || null,
       serverTime: new Date().toISOString()
@@ -141,6 +164,14 @@ export async function POST(req: Request) {
 
       pendingJobs.push(newJob);
 
+      // Queue command for hardware telemetry polling (§2.1 of Contract)
+      await queueCommandForDevice({
+        commandId: `cmd_${Date.now().toString(36)}`,
+        type: 'ENROLL_FINGERPRINT',
+        deviceId: cleanDeviceId,
+        userId: user.id
+      });
+
       // Update device LCD preview to show enrollment prompt
       const devIndex = db.devices.findIndex(d => d.id === cleanDeviceId);
       if (devIndex !== -1) {
@@ -216,16 +247,64 @@ export async function POST(req: Request) {
         }
       }
 
-      // Clear pending job
-      pendingJobs = pendingJobs.filter(j => j.userId !== userId);
+      // Update pending job status for UI polling
+      const existingJob = pendingJobs.find(j => (cleanDeviceId && j.deviceId === cleanDeviceId) || j.userId === userId);
+      if (existingJob) {
+        existingJob.status = 'COMPLETED';
+        existingJob.completedAt = now;
+      }
 
       await writeDb(db);
 
+      const dev = cleanDeviceId ? db.devices.find(d => d.id === cleanDeviceId) : null;
+      const totalEnrolledOnTerminal = cleanDeviceId 
+        ? db.fingerprints.filter(f => f.status === 'Active' && f.enrolledTerminals?.includes(cleanDeviceId)).length
+        : db.fingerprints.filter(f => f.status === 'Active').length;
+      const maxSlots = dev?.maxSlots || 300;
+      const freeSlots = Math.max(0, maxSlots - totalEnrolledOnTerminal);
+
       return NextResponse.json({
         success: true,
+        status: 'SUCCESS',
         message: `Biometric fingerprint template enrolled for ${user.name} and persisted to central database.`,
         userId,
-        slotNumber: resolvedSlot
+        userName: user.name,
+        slotNumber: resolvedSlot,
+        deviceId: cleanDeviceId,
+        enrolledSlots: totalEnrolledOnTerminal,
+        freeSlots,
+        maxSlots
+      });
+    }
+
+    // 4. Report Enrollment Failure from ESP32 optical sensor
+    if (action === 'REPORT_FAILURE') {
+      const { reason = 'Optical sensor timed out or finger image noisy' } = body;
+      const job = cleanDeviceId ? pendingJobs.find(j => j.deviceId === cleanDeviceId) : (userId ? pendingJobs.find(j => j.userId === userId) : null);
+      if (job) {
+        job.status = 'FAILED';
+      }
+
+      if (cleanDeviceId) {
+        const devIndex = db.devices.findIndex(d => d.id === cleanDeviceId);
+        if (devIndex !== -1) {
+          db.devices[devIndex].lcdText = [
+            '** ENROLL FAILED **',
+            'Try Again...',
+            'Keep Finger Flat',
+            'Timeout/Noise'
+          ];
+          await writeDb(db);
+        }
+      }
+
+      return NextResponse.json({
+        success: false,
+        status: 'FAILED',
+        message: `Enrollment failed reported by hardware: ${reason}`,
+        reason,
+        deviceId: cleanDeviceId,
+        userId: userId || job?.userId
       });
     }
 

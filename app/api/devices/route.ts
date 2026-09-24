@@ -25,7 +25,17 @@ export async function GET() {
         'Time: 08:57 AM [SYNC]',
         `Net: ${device.wifiStatus.toUpperCase()} | Bat:${device.batteryStatus}%`
       ],
-      voltage: device.voltage || '4.15V (Nominal 3.7V Li-ion)'
+      voltage: device.voltage || '4.15V (Nominal 3.7V Li-ion)',
+      maxSlots: device.maxSlots || 300,
+      enrolledFingerprints: device.enrolledFingerprints !== undefined 
+        ? device.enrolledFingerprints 
+        : db.fingerprints.filter(f => f.status === 'Active' && f.enrolledTerminals?.includes(device.id)).length || (index === 0 ? 2 : 0),
+      freeSlots: device.freeSlots !== undefined 
+        ? device.freeSlots 
+        : (device.maxSlots || 300) - (device.enrolledFingerprints !== undefined ? device.enrolledFingerprints : 2),
+      heartbeatIntervalSeconds: device.heartbeatIntervalSeconds || 30,
+      pinFallbackEnabled: device.pinFallbackEnabled ?? true,
+      cameraEvidenceEnabled: device.cameraEvidenceEnabled ?? true
     }));
 
     return NextResponse.json(enrichedDevices);

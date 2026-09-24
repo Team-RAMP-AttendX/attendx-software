@@ -1,12 +1,27 @@
 import {
   collection,
+  deleteDoc,
   doc,
   getDocs,
   setDoc,
   writeBatch
 } from 'firebase/firestore';
 import { firestore } from './firebase';
-import { DatabaseSchema, User, Fingerprint, AttendanceRecord, PINImage, Device } from '../types';
+import { DatabaseSchema, User, Fingerprint, AttendanceRecord, PINImage, Device, Administrator, TerminalCommand, CommandResultReport } from '../types';
+
+export const MASTER_ADMIN_EMAIL = 'redemptionjonathan1@gmail.com';
+
+export const DEFAULT_MASTER_ADMIN: Administrator = {
+  id: 'admin_master',
+  email: 'redemptionjonathan1@gmail.com',
+  name: 'Jonathan Redemption',
+  role: 'Master Administrator',
+  status: 'Active',
+  isMaster: true,
+  addedAt: '2026-09-01T00:00:00.000Z',
+  addedBy: 'Root Provisioning',
+  notes: 'Primary Master Administrator with root authority to provision additional system administrators.'
+};
 
 // Default initial data to seed Firestore if empty
 const INITIAL_DATA: DatabaseSchema = {
@@ -131,29 +146,34 @@ async function ensureFirestoreInitialized() {
  * Reads the entire database state from Cloud Firestore.
  */
 export async function readDb(): Promise<DatabaseSchema> {
-  await ensureFirestoreInitialized();
+  try {
+    await ensureFirestoreInitialized();
 
-  const [usersSnap, fpsSnap, attSnap, devsSnap, imgsSnap] = await Promise.all([
-    getDocs(collection(firestore, 'users')),
-    getDocs(collection(firestore, 'fingerprints')),
-    getDocs(collection(firestore, 'attendance')),
-    getDocs(collection(firestore, 'devices')),
-    getDocs(collection(firestore, 'images'))
-  ]);
+    const [usersSnap, fpsSnap, attSnap, devsSnap, imgsSnap] = await Promise.all([
+      getDocs(collection(firestore, 'users')),
+      getDocs(collection(firestore, 'fingerprints')),
+      getDocs(collection(firestore, 'attendance')),
+      getDocs(collection(firestore, 'devices')),
+      getDocs(collection(firestore, 'images'))
+    ]);
 
-  const users = usersSnap.docs.map(d => ({ ...d.data(), id: d.id })) as User[];
-  const fingerprints = fpsSnap.docs.map(d => ({ ...d.data(), id: d.id })) as Fingerprint[];
-  const attendance = attSnap.docs.map(d => ({ ...d.data(), id: d.id })) as AttendanceRecord[];
-  const devices = devsSnap.docs.map(d => ({ ...d.data(), id: d.id })) as Device[];
-  const images = imgsSnap.docs.map(d => ({ ...d.data(), id: d.id })) as PINImage[];
+    const users = usersSnap.docs.map(d => ({ ...d.data(), id: d.id })) as User[];
+    const fingerprints = fpsSnap.docs.map(d => ({ ...d.data(), id: d.id })) as Fingerprint[];
+    const attendance = attSnap.docs.map(d => ({ ...d.data(), id: d.id })) as AttendanceRecord[];
+    const devices = devsSnap.docs.map(d => ({ ...d.data(), id: d.id })) as Device[];
+    const images = imgsSnap.docs.map(d => ({ ...d.data(), id: d.id })) as PINImage[];
 
-  return {
-    users,
-    fingerprints,
-    attendance,
-    devices,
-    images
-  };
+    return {
+      users: users.length > 0 ? users : INITIAL_DATA.users,
+      fingerprints: fingerprints.length > 0 ? fingerprints : INITIAL_DATA.fingerprints,
+      attendance,
+      devices: devices.length > 0 ? devices : INITIAL_DATA.devices,
+      images
+    };
+  } catch (err) {
+    console.error('Firestore read error, returning fallback initial data:', err);
+    return INITIAL_DATA;
+  }
 }
 
 /**
@@ -215,4 +235,211 @@ export async function saveFingerprintDoc(fp: Fingerprint): Promise<void> {
  */
 export async function saveImageDoc(image: PINImage): Promise<void> {
   await setDoc(doc(firestore, 'images', image.id), image, { merge: true });
+}
+
+/**
+ * Resets all sidebar page values across the persistent Firestore database.
+ * Clears attendance logs, evidence photos, resets user attendance tallies to 0,
+ * and sets terminal pending queues to 0.
+ */
+export async function resetDatabaseToCleanState(): Promise<void> {
+  try {
+    const [attSnap, imgsSnap, usersSnap, devsSnap] = await Promise.all([
+      getDocs(collection(firestore, 'attendance')),
+      getDocs(collection(firestore, 'images')),
+      getDocs(collection(firestore, 'users')),
+      getDocs(collection(firestore, 'devices'))
+    ]);
+
+    // 1. Delete all attendance records
+    for (const d of attSnap.docs) {
+      await deleteDoc(doc(firestore, 'attendance', d.id));
+    }
+
+    // 2. Delete all image evidence
+    for (const d of imgsSnap.docs) {
+      await deleteDoc(doc(firestore, 'images', d.id));
+    }
+
+    // 3. Reset user attendance and late stats to 0
+    const userBatch = writeBatch(firestore);
+    for (const d of usersSnap.docs) {
+      const u = d.data();
+      userBatch.update(doc(firestore, 'users', d.id), {
+        totalAttendance: 0,
+        lateOccurrences: 0
+      });
+    }
+    await userBatch.commit();
+
+    // 4. Reset device pending records & logs
+    const devBatch = writeBatch(firestore);
+    for (const d of devsSnap.docs) {
+      devBatch.update(doc(firestore, 'devices', d.id), {
+        pendingRecords: 0,
+        lastSync: new Date().toISOString(),
+        lcdText: ['** ATTENDX TERMINAL **', 'Ready for Scan...', 'System: ZEROED [CLEAN]', 'Net: CONNECTED']
+      });
+    }
+    await devBatch.commit();
+  } catch (err) {
+    console.error('Error resetting database to clean state:', err);
+    throw err;
+  }
+}
+
+/**
+ * Retrieves all registered administrators from Firestore.
+ * Automatically provisions the master administrator if not present.
+ */
+export async function getAdministrators(): Promise<Administrator[]> {
+  try {
+    const colRef = collection(firestore, 'administrators');
+    const snapshot = await getDocs(colRef);
+    if (snapshot.empty) {
+      await setDoc(doc(firestore, 'administrators', DEFAULT_MASTER_ADMIN.id), DEFAULT_MASTER_ADMIN);
+      return [DEFAULT_MASTER_ADMIN];
+    }
+    const admins: Administrator[] = [];
+    snapshot.forEach(docSnap => {
+      admins.push(docSnap.data() as Administrator);
+    });
+    // Ensure master admin is always present
+    const hasMaster = admins.some(a => a.email.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase());
+    if (!hasMaster) {
+      await setDoc(doc(firestore, 'administrators', DEFAULT_MASTER_ADMIN.id), DEFAULT_MASTER_ADMIN);
+      admins.unshift(DEFAULT_MASTER_ADMIN);
+    }
+    return admins;
+  } catch (err) {
+    console.error('Error fetching administrators from Firestore:', err);
+    return [DEFAULT_MASTER_ADMIN];
+  }
+}
+
+/**
+ * Saves or updates an administrator document in Firestore.
+ */
+export async function saveAdministratorDoc(admin: Administrator): Promise<void> {
+  await setDoc(doc(firestore, 'administrators', admin.id), admin, { merge: true });
+}
+
+/**
+ * Deletes an administrator document from Firestore.
+ * Master administrator cannot be deleted.
+ */
+export async function deleteAdministratorDoc(id: string): Promise<void> {
+  if (id === DEFAULT_MASTER_ADMIN.id) {
+    throw new Error('The Master Administrator account cannot be deleted.');
+  }
+  await deleteDoc(doc(firestore, 'administrators', id));
+}
+
+export async function getPendingCommandsForDevice(deviceId: string): Promise<TerminalCommand[]> {
+  try {
+    const cleanId = deviceId.trim().toUpperCase();
+    const colRef = collection(firestore, 'commands');
+    const snapshot = await getDocs(colRef);
+    const cmds: TerminalCommand[] = [];
+    snapshot.forEach(docSnap => {
+      const data = docSnap.data() as TerminalCommand;
+      if (data.deviceId === cleanId && (data.status === 'PENDING' || data.status === 'DISPATCHED')) {
+        cmds.push({ ...data, commandId: docSnap.id });
+      }
+    });
+    return cmds;
+  } catch (err) {
+    console.error('Error fetching pending commands:', err);
+    return [];
+  }
+}
+
+export async function queueCommandForDevice(cmd: Omit<TerminalCommand, 'createdAt' | 'status'>): Promise<TerminalCommand> {
+  const fullCmd: TerminalCommand = {
+    ...cmd,
+    deviceId: cmd.deviceId.trim().toUpperCase(),
+    status: 'PENDING',
+    createdAt: new Date().toISOString()
+  };
+  await setDoc(doc(firestore, 'commands', fullCmd.commandId), fullCmd);
+  return fullCmd;
+}
+
+export async function recordCommandResult(report: CommandResultReport): Promise<void> {
+  const cleanDeviceId = report.deviceId.trim().toUpperCase();
+  const now = new Date().toISOString();
+
+  // If commandId provided, update the command record
+  if (report.commandId) {
+    const cmdRef = doc(firestore, 'commands', report.commandId);
+    await setDoc(cmdRef, {
+      status: report.status === 'success' ? 'COMPLETED' : 'FAILED',
+      completedAt: now,
+      slotNumber: report.slotNumber,
+      errorReason: report.errorReason
+    }, { merge: true });
+  }
+
+  // Update biometric template mapping in database
+  if (report.status === 'success') {
+    if (report.type === 'ENROLL_FINGERPRINT' && report.userId && report.slotNumber !== undefined) {
+      const db = await readDb();
+      const existingFp = db.fingerprints.find(f => f.userId === report.userId);
+      if (existingFp) {
+        existingFp.status = 'Active';
+        existingFp.slotNumber = report.slotNumber;
+        if (!existingFp.enrolledTerminals) existingFp.enrolledTerminals = [];
+        if (!existingFp.enrolledTerminals.includes(cleanDeviceId)) {
+          existingFp.enrolledTerminals.push(cleanDeviceId);
+        }
+      } else {
+        db.fingerprints.push({
+          id: `FP_${Date.now()}`,
+          userId: report.userId,
+          registrationDate: now,
+          status: 'Active',
+          slotNumber: report.slotNumber,
+          templateData: `SMF17_FP_${report.userId}_SLOT_${report.slotNumber}`,
+          enrolledTerminals: [cleanDeviceId]
+        });
+      }
+      await writeDb(db);
+    } else if (report.type === 'DELETE_FINGERPRINT' && report.slotNumber !== undefined) {
+      const db = await readDb();
+      const fp = db.fingerprints.find(f => f.slotNumber === report.slotNumber && f.enrolledTerminals?.includes(cleanDeviceId));
+      if (fp) {
+        fp.enrolledTerminals = fp.enrolledTerminals?.filter(t => t !== cleanDeviceId) || [];
+        if (fp.enrolledTerminals.length === 0) {
+          fp.status = 'Inactive';
+        }
+      }
+      await writeDb(db);
+    }
+  }
+}
+
+/**
+ * Verifies if an email address belongs to an authorized active administrator.
+ */
+export async function isAuthorizedAdminEmail(email: string): Promise<{ authorized: boolean; admin?: Administrator }> {
+  const normalized = (email || '').trim().toLowerCase();
+  if (!normalized) return { authorized: false };
+
+  // Master admin is unconditionally authorized
+  if (normalized === MASTER_ADMIN_EMAIL.toLowerCase()) {
+    return { authorized: true, admin: DEFAULT_MASTER_ADMIN };
+  }
+
+  try {
+    const admins = await getAdministrators();
+    const found = admins.find(a => a.email.toLowerCase() === normalized);
+    if (found && found.status === 'Active') {
+      return { authorized: true, admin: found };
+    }
+    return { authorized: false, admin: found };
+  } catch (err) {
+    console.error('Error checking authorized admin email:', err);
+    // Fallback: master admin is safe
+    return { authorized: normalized === MASTER_ADMIN_EMAIL.toLowerCase() };
+  }
 }

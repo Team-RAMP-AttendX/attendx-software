@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { readDb, writeDb } from '@/lib/db';
+import { readDb, writeDb, getPendingCommandsForDevice } from '@/lib/db';
 import { Device } from '@/types';
 
 export async function POST(req: Request) {
@@ -21,7 +21,10 @@ export async function POST(req: Request) {
       fingerprintStatus,
       cameraStatus,
       keypadStatus,
-      lcdStatus
+      lcdStatus,
+      maxSlots,
+      freeSlots,
+      enrolledFingerprints
     } = body;
 
     if (!deviceId) {
@@ -33,6 +36,12 @@ export async function POST(req: Request) {
     const existingIndex = db.devices.findIndex(d => d.id === cleanId);
 
     const now = new Date().toISOString();
+
+    const reportedMax = typeof maxSlots === 'number' ? maxSlots : 300;
+    let reportedEnrolled = typeof enrolledFingerprints === 'number' 
+      ? enrolledFingerprints 
+      : (existingIndex !== -1 && db.devices[existingIndex].enrolledFingerprints !== undefined ? db.devices[existingIndex].enrolledFingerprints : 2);
+    let reportedFree = typeof freeSlots === 'number' ? freeSlots : Math.max(0, reportedMax - (reportedEnrolled || 0));
 
     if (existingIndex !== -1) {
       // Update existing device telemetry
@@ -54,6 +63,9 @@ export async function POST(req: Request) {
         cameraStatus: cameraStatus || db.devices[existingIndex].cameraStatus,
         keypadStatus: keypadStatus || db.devices[existingIndex].keypadStatus,
         lcdStatus: lcdStatus || db.devices[existingIndex].lcdStatus,
+        maxSlots: reportedMax,
+        enrolledFingerprints: reportedEnrolled,
+        freeSlots: reportedFree,
         lastSync: now
       };
     } else {
@@ -83,7 +95,10 @@ export async function POST(req: Request) {
           'Time: Synced',
           'Net: CONNECTED'
         ],
-        voltage: voltage || '4.15V (Nominal 3.7V Li-ion)'
+        voltage: voltage || '4.15V (Nominal 3.7V Li-ion)',
+        maxSlots: reportedMax,
+        enrolledFingerprints: reportedEnrolled,
+        freeSlots: reportedFree
       };
       db.devices.push(newDev);
     }
@@ -93,13 +108,39 @@ export async function POST(req: Request) {
     // Check if there are active users enrolled in the system
     const activeFingerprints = db.fingerprints.filter(f => f.status === 'Active');
 
+    // Retrieve any pending commands for this terminal (§2.1 of Contract)
+    const pendingCommands = await getPendingCommandsForDevice(cleanId);
+    
+    // Format command payload for ESP32 firmware
+    const formattedCommands = pendingCommands.slice(0, 3).map(cmd => {
+      if (cmd.type === 'ENROLL_FINGERPRINT') {
+        return {
+          commandId: cmd.commandId,
+          type: 'ENROLL_FINGERPRINT' as const,
+          userId: cmd.userId
+        };
+      } else if (cmd.type === 'DELETE_FINGERPRINT') {
+        return {
+          commandId: cmd.commandId,
+          type: 'DELETE_FINGERPRINT' as const,
+          slotNumber: cmd.slotNumber
+        };
+      }
+      return {
+        commandId: cmd.commandId,
+        type: cmd.type
+      };
+    });
+
     return NextResponse.json({
+      ok: true,
       success: true,
       deviceId: cleanId,
       serverTime: now,
       terminalStatus: 'ACKNOWLEDGED',
       activeEnrolledFingerprints: activeFingerprints.length,
-      nextHeartbeatIntervalSeconds: 30
+      nextHeartbeatIntervalSeconds: 30,
+      commands: formattedCommands
     });
   } catch (err) {
     console.error('Error handling telemetry:', err);
