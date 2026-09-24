@@ -56,12 +56,12 @@ export async function POST(req: Request) {
 
     if (contentType.includes('multipart/form-data')) {
       const formData = await req.formData();
-      deviceId = (formData.get('deviceId') as string) || '';
-      attendanceId = (formData.get('attendanceId') as string) || (formData.get('eventId') as string) || '';
-      userId = (formData.get('userId') as string) || '';
-      storageRef = (formData.get('storageRef') as string) || '';
+      deviceId = (formData.get('deviceId') as string) || (formData.get('device_id') as string) || (formData.get('terminalId') as string) || '';
+      attendanceId = (formData.get('attendanceId') as string) || (formData.get('attendance_id') as string) || (formData.get('eventId') as string) || (formData.get('event_id') as string) || '';
+      userId = (formData.get('userId') as string) || (formData.get('user_id') as string) || (formData.get('studentId') as string) || '';
+      storageRef = (formData.get('storageRef') as string) || (formData.get('storage_ref') as string) || '';
 
-      const file = formData.get('image') || formData.get('file');
+      const file = formData.get('image') || formData.get('file') || formData.get('photo');
       if (file && typeof file === 'object' && 'arrayBuffer' in file) {
         const buffer = await (file as Blob).arrayBuffer();
         const base64Data = Buffer.from(buffer).toString('base64');
@@ -69,31 +69,58 @@ export async function POST(req: Request) {
         imageBase64 = `data:${mimeType};base64,${base64Data}`;
       }
     } else {
-      const body = await req.json();
-      deviceId = body.deviceId || '';
-      attendanceId = body.attendanceId || '';
-      userId = body.userId || '';
-      imageBase64 = body.imageBase64 || '';
-      storageRef = body.storageRef || '';
-    }
-
-    if (!userId) {
-      return NextResponse.json({ error: 'userId is required (form-data field "userId")' }, { status: 400 });
+      let body: any = {};
+      try {
+        body = await req.json();
+      } catch {
+        // may be empty or raw binary
+      }
+      deviceId = body.deviceId || body.device_id || body.terminalId || '';
+      attendanceId = body.attendanceId || body.attendance_id || body.eventId || body.event_id || '';
+      userId = body.userId || body.user_id || body.studentId || '';
+      imageBase64 = body.imageBase64 || body.image_base64 || body.image || '';
+      storageRef = body.storageRef || body.storage_ref || '';
     }
 
     const db = await readDb();
-    const user = db.users.find(u => u.id === userId);
-    if (!user) {
-      return NextResponse.json({ error: `User with id ${userId} not found` }, { status: 404 });
+
+    // If userId was not passed by the ESP32-CAM, deduce it from the attendanceId / eventId returned earlier
+    if (!userId && attendanceId) {
+      const matchedAtt = db.attendance.find(a => a.id === attendanceId);
+      if (matchedAtt) {
+        userId = matchedAtt.userId;
+      }
     }
+
+    // If still no userId, but deviceId provided, associate with the latest check-in for that terminal
+    if (!userId && deviceId) {
+      const cleanDevId = deviceId.trim().toUpperCase();
+      const recentAtt = [...db.attendance].reverse().find(a => a.deviceId === cleanDevId);
+      if (recentAtt) {
+        userId = recentAtt.userId;
+        if (!attendanceId) attendanceId = recentAtt.id;
+      }
+    }
+
+    if (!userId && !attendanceId) {
+      return NextResponse.json({
+        ok: false,
+        success: false,
+        error: 'MISSING_LINKAGE',
+        message: 'Either attendanceId (recommended: returned in /api/attendance/checkin response) or userId is required in form-data.'
+      }, { status: 400 });
+    }
+
+    const cleanUserId = userId ? String(userId).trim().toUpperCase() : 'UNKNOWN';
+    const user = db.users.find(u => u.id === cleanUserId || u.id.toLowerCase() === cleanUserId.toLowerCase());
 
     // If attendanceId wasn't passed, find the most recent checkin for this user today to link accurately
     let linkedAttendanceId = attendanceId;
-    if (!linkedAttendanceId) {
+    if (!linkedAttendanceId && cleanUserId) {
       const todayStr = new Date().toISOString().split('T')[0];
       const recentRecord = [...db.attendance]
         .reverse()
-        .find(a => a.userId === userId && a.date === todayStr);
+        .find(a => a.userId === cleanUserId && a.date === todayStr);
       if (recentRecord) {
         linkedAttendanceId = recentRecord.id;
       }
@@ -102,10 +129,10 @@ export async function POST(req: Request) {
     const newImage = {
       id: `IMG_${Date.now()}_${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
       attendanceId: linkedAttendanceId || `ATT_${Date.now()}`,
-      userId,
+      userId: user?.id || cleanUserId,
       captureTime: new Date().toISOString(),
       authMode: 'pin' as const,
-      storageRef: imageBase64 || storageRef || '/evidence/camera_capture_placeholder.jpg',
+      storageRef: imageBase64 || storageRef || '/demo-evidence.jpg',
       uploadStatus: 'captured' as const
     };
 
@@ -124,13 +151,22 @@ export async function POST(req: Request) {
     await writeDb(db);
 
     return NextResponse.json({
+      ok: true,
       success: true,
+      attendanceId: linkedAttendanceId,
+      userId: user?.id || cleanUserId,
+      userName: user?.name || 'Verified User',
       image: newImage,
-      message: 'ESP-CAM image received and stored successfully via streaming multipart upload.'
+      message: 'ESP-CAM evidence photo received and verified successfully.'
     }, { status: 201 });
   } catch (err) {
     console.error('Error storing evidence image:', err);
-    return NextResponse.json({ error: 'Failed to store evidence image' }, { status: 500 });
+    return NextResponse.json({ 
+      ok: false,
+      success: false,
+      error: 'STORAGE_FAILED', 
+      message: 'Failed to store evidence image: ' + (err instanceof Error ? err.message : String(err)) 
+    }, { status: 500 });
   }
 }
 

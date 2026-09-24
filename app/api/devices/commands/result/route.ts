@@ -9,50 +9,60 @@ import { CommandResultReport } from '@/types';
  */
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const {
-      deviceId,
-      commandId,
-      type,
-      status,
-      source = commandId ? 'dashboard' : 'terminal',
-      userId,
-      slotNumber,
-      errorReason,
-      timestamp
-    } = body;
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ ok: false, ack: false, error: 'Request body must be valid JSON' }, { status: 400 });
+    }
 
-    if (!deviceId) {
+    const rawDeviceId = body.deviceId || body.device_id || body.terminalId || body.terminal_id;
+    if (!rawDeviceId) {
       return NextResponse.json(
-        { ok: false, error: 'deviceId is required' },
+        { ok: false, ack: false, error: 'deviceId is required in command result payload' },
         { status: 400 }
       );
     }
 
-    if (!type || !['ENROLL_FINGERPRINT', 'DELETE_FINGERPRINT'].includes(type)) {
+    const commandId = body.commandId || body.command_id || body.id;
+    const rawType = String(body.type || body.commandType || body.command_type || '').toUpperCase();
+    let normalizedType: 'ENROLL_FINGERPRINT' | 'DELETE_FINGERPRINT' = 'ENROLL_FINGERPRINT';
+
+    if (rawType.includes('ENROLL')) {
+      normalizedType = 'ENROLL_FINGERPRINT';
+    } else if (rawType.includes('DELETE') || rawType.includes('REMOVE') || rawType.includes('CLEAR')) {
+      normalizedType = 'DELETE_FINGERPRINT';
+    } else {
       return NextResponse.json(
-        { ok: false, error: 'Valid type (ENROLL_FINGERPRINT or DELETE_FINGERPRINT) is required' },
+        { ok: false, ack: false, error: 'Valid type (ENROLL_FINGERPRINT or DELETE_FINGERPRINT) is required' },
         { status: 400 }
       );
     }
 
-    if (!status || !['success', 'error'].includes(status)) {
-      return NextResponse.json(
-        { ok: false, error: 'status must be "success" or "error"' },
-        { status: 400 }
-      );
-    }
+    const rawStatus = String(body.status || '').toLowerCase();
+    const normalizedStatus: 'success' | 'error' = (rawStatus === 'success' || rawStatus === 'ok' || rawStatus === 'completed' || rawStatus === 'true')
+      ? 'success'
+      : 'error';
+
+    const rawSlot = body.slotNumber ?? body.slot_number ?? body.slot ?? body.fingerId ?? body.finger_id;
+    const slotNumber = rawSlot !== undefined && rawSlot !== null && rawSlot !== '' ? Number(rawSlot) : undefined;
+
+    const rawUserId = body.userId || body.user_id || body.studentId;
+    const userId = rawUserId ? String(rawUserId).trim().toUpperCase() : undefined;
+
+    const errorReason = body.errorReason || body.error_reason || body.reason || body.error;
+    const source: 'dashboard' | 'terminal' = body.source || (commandId ? 'dashboard' : 'terminal');
 
     const report: CommandResultReport = {
-      deviceId: String(deviceId).trim().toUpperCase(),
+      deviceId: String(rawDeviceId).trim().toUpperCase(),
       commandId: commandId ? String(commandId).trim() : undefined,
-      type,
-      status,
+      type: normalizedType,
+      status: normalizedStatus,
       source,
-      userId: userId ? String(userId).trim().toUpperCase() : undefined,
-      slotNumber: typeof slotNumber === 'number' ? slotNumber : (slotNumber ? Number(slotNumber) : undefined),
+      userId,
+      slotNumber,
       errorReason: errorReason ? String(errorReason) : undefined,
-      timestamp: timestamp || new Date().toISOString()
+      timestamp: body.timestamp || body.time || new Date().toISOString()
     };
 
     // Update database & command status
@@ -68,13 +78,13 @@ export async function POST(req: NextRequest) {
           db.devices[devIndex].lcdText = [
             '** ENROLL SUCCESS **',
             `User: ${report.userId || 'User'}`,
-            `Slot #${report.slotNumber} Saved`,
+            `Slot #${report.slotNumber || '?'} Saved`,
             'Ready for Scan'
           ];
         } else if (report.type === 'DELETE_FINGERPRINT') {
           db.devices[devIndex].lcdText = [
             '** SLOT CLEARED **',
-            `Slot #${report.slotNumber} deleted`,
+            `Slot #${report.slotNumber || '?'} deleted`,
             'Ready for Scan',
             'Time: Synced'
           ];
@@ -83,7 +93,7 @@ export async function POST(req: NextRequest) {
         db.devices[devIndex].lcdText = [
           '** OP FAILED **',
           `${report.type.substring(0, 16)}`,
-          `Err: ${report.errorReason || 'Hardware timeout'}`,
+          `Err: ${(report.errorReason || 'Hardware timeout').substring(0, 16)}`,
           'Check Terminal'
         ];
       }
@@ -93,16 +103,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       ack: true,
+      success: true,
       message: `Command result recorded successfully for terminal ${report.deviceId}`,
       commandId: report.commandId,
       status: report.status,
+      slotNumber: report.slotNumber,
       serverTime: new Date().toISOString()
     }, { status: 200 });
 
   } catch (err: unknown) {
     console.error('Error processing command result:', err);
     return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : 'Internal server error processing command result' },
+      { ok: false, ack: false, error: err instanceof Error ? err.message : 'Internal server error processing command result' },
       { status: 500 }
     );
   }

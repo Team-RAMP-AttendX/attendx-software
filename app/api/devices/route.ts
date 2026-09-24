@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { readDb, writeDb } from '@/lib/db';
+import { readDb, writeDb, deleteDeviceDoc } from '@/lib/db';
 import { Device } from '@/types';
 
 export async function GET() {
@@ -185,7 +185,7 @@ export async function DELETE(req: Request) {
     if (!deviceId) {
       try {
         const body = await req.json();
-        deviceId = body.id;
+        deviceId = body.id || body.deviceId;
       } catch {
         // no body
       }
@@ -195,17 +195,26 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: 'Device ID is required' }, { status: 400 });
     }
 
-    const db = await readDb();
-    const initialCount = db.devices.length;
-    db.devices = db.devices.filter(d => d.id !== deviceId);
+    const cleanId = String(deviceId).trim().toUpperCase();
 
-    if (db.devices.length === initialCount) {
-      return NextResponse.json({ error: 'Device not found' }, { status: 404 });
+    // 1. Physically delete from Firestore collection and cleanup references
+    await deleteDeviceDoc(cleanId);
+
+    // 2. Also remove from local database snapshot if loaded
+    try {
+      const db = await readDb();
+      db.devices = db.devices.filter(d => d.id !== cleanId && d.id !== deviceId);
+    } catch {
+      // ignore
     }
 
-    await writeDb(db);
-    return NextResponse.json({ success: true, message: `Device ${deviceId} removed` });
+    return NextResponse.json({ 
+      success: true, 
+      ok: true, 
+      message: `Device ${cleanId} permanently removed from database.` 
+    });
   } catch (err) {
+    console.error('Error in device DELETE handler:', err);
     return NextResponse.json({ error: 'Failed to delete device' }, { status: 500 });
   }
 }

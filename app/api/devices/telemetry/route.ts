@@ -4,35 +4,44 @@ import { Device } from '@/types';
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { 
-      deviceId, 
-      wifiStatus, 
-      rssi, 
-      ipAddress, 
-      macAddress, 
-      powerStatus, 
-      batteryStatus, 
-      voltage, 
-      esp32Heap, 
-      pendingRecords, 
-      lcdText, 
-      firmwareVersion,
-      fingerprintStatus,
-      cameraStatus,
-      keypadStatus,
-      lcdStatus,
-      maxSlots,
-      freeSlots,
-      enrolledFingerprints
-    } = body;
-
-    if (!deviceId) {
-      return NextResponse.json({ error: 'deviceId is required in telemetry payload' }, { status: 400 });
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ ok: false, error: 'Request body must be valid JSON' }, { status: 400 });
     }
 
+    const rawDeviceId = body.deviceId || body.device_id || body.terminalId || body.terminal_id;
+    if (!rawDeviceId) {
+      return NextResponse.json({ ok: false, error: 'deviceId is required in telemetry payload' }, { status: 400 });
+    }
+
+    const cleanId = String(rawDeviceId).trim().toUpperCase();
+    const wifiStatus = body.wifiStatus || body.wifi_status;
+    const rssi = typeof body.rssi === 'number' ? body.rssi : (body.rssi ? Number(body.rssi) : undefined);
+    const ipAddress = body.ipAddress || body.ip_address || body.ip;
+    const macAddress = body.macAddress || body.mac_address || body.mac;
+    const powerStatus = body.powerStatus || body.power_status || body.power;
+    const rawBattery = body.batteryStatus ?? body.battery_status ?? body.battery;
+    const batteryStatus = typeof rawBattery === 'number' ? rawBattery : (rawBattery ? Number(rawBattery) : undefined);
+    const voltage = body.voltage;
+    const esp32Heap = body.esp32Heap || body.esp32_heap || body.freeHeap || body.heap;
+    const rawPending = body.pendingRecords ?? body.pending_records;
+    const pendingRecords = typeof rawPending === 'number' ? rawPending : (rawPending ? Number(rawPending) : undefined);
+    const lcdText = body.lcdText || body.lcd_text;
+    const firmwareVersion = body.firmwareVersion || body.firmware_version;
+    const fingerprintStatus = body.fingerprintStatus || body.fingerprint_status;
+    const cameraStatus = body.cameraStatus || body.camera_status;
+    const keypadStatus = body.keypadStatus || body.keypad_status;
+    const lcdStatus = body.lcdStatus || body.lcd_status;
+    const rawMax = body.maxSlots ?? body.max_slots;
+    const maxSlots = typeof rawMax === 'number' ? rawMax : (rawMax ? Number(rawMax) : 300);
+    const rawEnrolled = body.enrolledFingerprints ?? body.enrolled_fingerprints;
+    const enrolledFingerprints = typeof rawEnrolled === 'number' ? rawEnrolled : (rawEnrolled ? Number(rawEnrolled) : undefined);
+    const rawFree = body.freeSlots ?? body.free_slots;
+    const freeSlots = typeof rawFree === 'number' ? rawFree : (rawFree ? Number(rawFree) : undefined);
+
     const db = await readDb();
-    const cleanId = String(deviceId).trim().toUpperCase();
     const existingIndex = db.devices.findIndex(d => d.id === cleanId);
 
     const now = new Date().toISOString();

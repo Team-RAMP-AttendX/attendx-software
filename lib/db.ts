@@ -163,11 +163,14 @@ export async function readDb(): Promise<DatabaseSchema> {
     const devices = devsSnap.docs.map(d => ({ ...d.data(), id: d.id })) as Device[];
     const images = imgsSnap.docs.map(d => ({ ...d.data(), id: d.id })) as PINImage[];
 
+    // If Firestore has been initialized or has records, use the actual devices collection (even if empty, e.g. after deletion)
+    const isInitialized = isSeeded || usersSnap.size > 0 || devsSnap.size > 0;
+
     return {
-      users: users.length > 0 ? users : INITIAL_DATA.users,
-      fingerprints: fingerprints.length > 0 ? fingerprints : INITIAL_DATA.fingerprints,
+      users: users.length > 0 ? users : (isInitialized ? [] : INITIAL_DATA.users),
+      fingerprints: fingerprints.length > 0 ? fingerprints : (isInitialized ? [] : INITIAL_DATA.fingerprints),
       attendance,
-      devices: devices.length > 0 ? devices : INITIAL_DATA.devices,
+      devices: isInitialized ? devices : (devices.length > 0 ? devices : INITIAL_DATA.devices),
       images
     };
   } catch (err) {
@@ -231,6 +234,47 @@ export async function deleteUserDoc(userId: string): Promise<void> {
  */
 export async function saveDeviceDoc(device: Device): Promise<void> {
   await setDoc(doc(firestore, 'devices', device.id), device, { merge: true });
+}
+
+/**
+ * Permanently deletes a device document and associated commands/allocations from Firestore.
+ */
+export async function deleteDeviceDoc(deviceId: string): Promise<void> {
+  const cleanId = String(deviceId).trim().toUpperCase();
+  try {
+    // 1. Delete device doc from Firestore
+    await deleteDoc(doc(firestore, 'devices', cleanId));
+    if (cleanId !== deviceId) {
+      await deleteDoc(doc(firestore, 'devices', deviceId));
+    }
+
+    // 2. Clear any pending commands for this device in 'commands'
+    const cmdCol = collection(firestore, 'commands');
+    const cmdSnap = await getDocs(cmdCol);
+    for (const d of cmdSnap.docs) {
+      const data = d.data();
+      if (data.deviceId === cleanId || data.deviceId === deviceId) {
+        await deleteDoc(doc(firestore, 'commands', d.id));
+      }
+    }
+
+    // 3. Remove cleanId from enrolledTerminals in fingerprints
+    const fpCol = collection(firestore, 'fingerprints');
+    const fpSnap = await getDocs(fpCol);
+    for (const d of fpSnap.docs) {
+      const data = d.data() as Fingerprint;
+      if (data.enrolledTerminals && (data.enrolledTerminals.includes(cleanId) || data.enrolledTerminals.includes(deviceId))) {
+        const updatedTerminals = data.enrolledTerminals.filter(t => t !== cleanId && t !== deviceId);
+        await setDoc(doc(firestore, 'fingerprints', d.id), {
+          ...data,
+          enrolledTerminals: updatedTerminals
+        }, { merge: true });
+      }
+    }
+  } catch (err) {
+    console.error(`Failed to delete device doc ${cleanId}:`, err);
+    throw err;
+  }
 }
 
 /**

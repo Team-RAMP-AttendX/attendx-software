@@ -24,6 +24,8 @@ interface SystemModeContextType {
   triggerSimulatedCheckIn: (userId: string, mode?: 'fingerprint' | 'pin') => void;
   triggerSimulatedEnrollment: (userId: string, targetSlot?: number) => void;
   triggerSimulatedHeartbeat: (deviceId: string) => void;
+  deleteSimulatedDevice: (deviceId: string) => void;
+  addSimulatedDevice: (device: Device) => void;
   resetSimulationData: () => void;
 
   // Real Database Reset
@@ -233,6 +235,29 @@ export function SystemModeProvider({ children }: { children: React.ReactNode }) 
     });
   }, []);
 
+  const deleteSimulatedDevice = useCallback((deviceId: string) => {
+    setSimState(prev => {
+      const cleanId = deviceId.trim().toUpperCase();
+      return {
+        ...prev,
+        devices: prev.devices.filter(d => d.id !== cleanId && d.id !== deviceId),
+        liveLogMessage: `[SIMULATION] Device ${cleanId} removed from terminal fleet`
+      };
+    });
+  }, []);
+
+  const addSimulatedDevice = useCallback((device: Device) => {
+    setSimState(prev => {
+      const exists = prev.devices.some(d => d.id === device.id);
+      if (exists) return prev;
+      return {
+        ...prev,
+        devices: [...prev.devices, device],
+        liveLogMessage: `[SIMULATION] Device ${device.id} provisioned to terminal fleet`
+      };
+    });
+  }, []);
+
   // Real Database Reset function
   const resetDatabase = useCallback(async (): Promise<{ success: boolean; message: string }> => {
     setIsResettingDb(true);
@@ -272,6 +297,8 @@ export function SystemModeProvider({ children }: { children: React.ReactNode }) 
     triggerSimulatedCheckIn,
     triggerSimulatedEnrollment,
     triggerSimulatedHeartbeat,
+    deleteSimulatedDevice,
+    addSimulatedDevice,
     resetSimulationData,
     resetDatabase,
     isResettingDb
@@ -288,6 +315,8 @@ export function SystemModeProvider({ children }: { children: React.ReactNode }) 
     triggerSimulatedCheckIn,
     triggerSimulatedEnrollment,
     triggerSimulatedHeartbeat,
+    deleteSimulatedDevice,
+    addSimulatedDevice,
     resetSimulationData,
     resetDatabase,
     isResettingDb

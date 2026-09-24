@@ -23,7 +23,7 @@ export default function DevicesPage() {
   const [selectedDeviceDetails, setSelectedDeviceDetails] = useState<Device | null>(null)
   const [deviceToDelete, setDeviceToDelete] = useState<Device | null>(null)
   const [isApiSpecsModalOpen, setIsApiSpecsModalOpen] = useState(false)
-  const [apiSpecTab, setApiSpecTab] = useState<'telemetry' | 'enrollment' | 'checkin' | 'evidence'>('telemetry')
+  const [apiSpecTab, setApiSpecTab] = useState<'telemetry' | 'enrollment' | 'checkin' | 'evidence' | 'commands'>('telemetry')
 
   // Dedicated Enroll Fingerprint & Terminal Configuration Modals
   const [deviceToEnroll, setDeviceToEnroll] = useState<Device | null>(null)
@@ -59,7 +59,7 @@ export default function DevicesPage() {
   const [newPowerStatus, setNewPowerStatus] = useState<"AC" | "Battery">("AC")
   const [addError, setAddError] = useState("")
 
-  const { isSimulationMode, simState } = useSystemMode()
+  const { isSimulationMode, simState, deleteSimulatedDevice, addSimulatedDevice } = useSystemMode()
 
   // Diagnostics status message
   const [diagnosticResult, setDiagnosticResult] = useState<{ id: string; message: string } | null>(null)
@@ -254,6 +254,44 @@ export default function DevicesPage() {
     setAddError("")
 
     try {
+      if (isSimulationMode) {
+        const cleanId = newDeviceId.trim().toUpperCase()
+        addSimulatedDevice({
+          id: cleanId,
+          name: newDeviceName.trim() || `AttendX Terminal ${activeDevices.length + 1}`,
+          location: newDeviceLocation.trim() || 'Facility Entrance',
+          status: 'ONLINE',
+          wifiStatus: 'Connected',
+          lastSync: new Date().toISOString(),
+          pendingRecords: 0,
+          batteryStatus: 98,
+          powerStatus: newPowerStatus,
+          ipAddress: `192.168.1.${120 + activeDevices.length}`,
+          macAddress: `24:0A:C4:F1:2A:${(30 + activeDevices.length).toString(16).toUpperCase()}`,
+          firmwareVersion: 'AttendX-FW v2.4.1',
+          esp32Heap: '290 KB Free / 520 KB Total',
+          fingerprintStatus: 'DY50 Ready (UART 57600)',
+          cameraStatus: 'ESP-CAM Standby (SVGA OV2640)',
+          keypadStatus: '4x4 Matrix Active (50ms debounce)',
+          lcdStatus: '20x4 I2C LCD Ready (0x27)',
+          lcdText: [
+            '** ATTENDX TERMINAL **',
+            'Ready for Scan...',
+            'System Initialized',
+            'Net: CONNECTED | Bat:98%'
+          ],
+          voltage: '4.18V (Nominal 3.7V Li-ion)',
+          maxSlots: 300,
+          enrolledFingerprints: 0,
+          freeSlots: 300
+        })
+        setIsAddModalOpen(false)
+        setNewDeviceId("")
+        setNewDeviceName("")
+        setNewDeviceLocation("")
+        return
+      }
+
       const res = await fetch('/api/devices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -337,18 +375,40 @@ export default function DevicesPage() {
 
   const handleDeleteDevice = async () => {
     if (!deviceToDelete) return
+    const idToDelete = deviceToDelete.id
     setActionLoading("deleting")
     try {
-      await fetch(`/api/devices?id=${encodeURIComponent(deviceToDelete.id)}`, {
-        method: 'DELETE'
-      })
+      if (isSimulationMode) {
+        deleteSimulatedDevice(idToDelete)
+      } else {
+        const res = await fetch(`/api/devices?id=${encodeURIComponent(idToDelete)}`, {
+          method: 'DELETE',
+          headers: { 'Accept': 'application/json' }
+        })
+        const text = await res.text()
+        let data: any = {}
+        try {
+          data = JSON.parse(text)
+        } catch {
+          // fallback
+        }
+        if (!res.ok) {
+          throw new Error(data?.error || data?.message || `Failed to delete terminal (${res.status})`)
+        }
+        // Immediately remove from local state so UI updates instantaneously
+        setDevices(prev => prev.filter(d => d.id !== idToDelete))
+      }
+
       setDeviceToDelete(null)
-      if (selectedDeviceDetails?.id === deviceToDelete.id) {
+      if (selectedDeviceDetails?.id === idToDelete) {
         setSelectedDeviceDetails(null)
       }
-      fetchDevices()
+      if (!isSimulationMode) {
+        fetchDevices()
+      }
     } catch (err) {
-      console.error(err)
+      console.error('Error deleting terminal:', err)
+      alert(err instanceof Error ? err.message : 'Failed to delete terminal from database')
     } finally {
       setActionLoading(null)
     }
@@ -1244,22 +1304,35 @@ export default function DevicesPage() {
                   </p>
                 </div>
               </div>
-              <button 
-                onClick={() => setIsApiSpecsModalOpen(false)} 
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center space-x-2">
+                <a
+                  href="/contract-response.html"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center text-xs font-semibold px-3 py-1.5 bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-md hover:bg-emerald-100 transition-colors shadow-sm"
+                  title="Open, print, or save the signed firmware contract PDF"
+                >
+                  <Download className="w-3.5 h-3.5 mr-1.5 text-emerald-700" />
+                  Print / Save Contract PDF
+                </a>
+                <button 
+                  onClick={() => setIsApiSpecsModalOpen(false)} 
+                  className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </CardHeader>
 
             <CardContent className="p-6 overflow-y-auto space-y-6">
               {/* Navigation Tabs */}
-              <div className="flex space-x-2 border-b border-slate-200 pb-2">
+              <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-2">
                 {[
                   { id: 'telemetry', label: '1. Heartbeat & 16x2 / 20x4 LCD' },
                   { id: 'enrollment', label: '2. Slot-to-User Mapping (Hackathon MVP)' },
                   { id: 'checkin', label: '3. Attendance Scans (Slot or User)' },
                   { id: 'evidence', label: '4. Multipart JPEG Streaming' },
+                  { id: 'commands', label: '5. Biometric Command Results' }
                 ].map(t => (
                   <button
                     key={t.id}
@@ -1483,6 +1556,70 @@ http.addHeader("Content-Type", "multipart/form-data; boundary=" + boundary);
 
                   <div className="p-3 bg-slate-100 rounded-lg text-xs text-slate-600">
                     <span className="font-semibold text-slate-800">Note:</span> JSON with Base64 is also still supported as a fallback, but multipart streaming is recommended for stable memory performance.
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 5: Biometric Command Execution Report */}
+              {apiSpecTab === 'commands' && (
+                <div className="space-y-4">
+                  <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-xs font-bold text-indigo-800 bg-indigo-100 px-2 py-1 rounded border border-indigo-300">
+                        POST /api/devices/commands/result
+                      </span>
+                      <span className="text-xs text-indigo-700 font-semibold">Explicit Cloud ACK Protocol</span>
+                    </div>
+                    <p className="text-xs text-indigo-900 leading-relaxed">
+                      After the ESP32 finishes executing a biometric enrollment (<code>ENROLL_FINGERPRINT</code>) or slot deletion (<code>DELETE_FINGERPRINT</code>), post the execution result here. The cloud will respond with an explicit <code>{`{"ok": true, "ack": true}`}</code>. Do <strong>not</strong> clear the command from EEPROM until <code>ack: true</code> is received.
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-bold text-slate-700 mb-1.5">1. Enrollment Success Report:</p>
+                    <pre className="p-4 bg-slate-900 text-slate-100 rounded-xl text-xs font-mono overflow-x-auto leading-relaxed border border-slate-800">
+{`{
+  "deviceId": "DEV_TERM_01",
+  "commandId": "cmd_enroll_9021",
+  "type": "ENROLL_FINGERPRINT",
+  "status": "success",
+  "userId": "USR001",
+  "slotNumber": 3,
+  "timestamp": "2026-09-24T09:15:30.000Z"
+}`}
+                    </pre>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-bold text-slate-700 mb-1.5">2. Hardware Sensor Failure / Timeout Report:</p>
+                    <pre className="p-4 bg-slate-900 text-slate-100 rounded-xl text-xs font-mono overflow-x-auto leading-relaxed border border-slate-800">
+{`{
+  "deviceId": "DEV_TERM_01",
+  "commandId": "cmd_enroll_9021",
+  "type": "ENROLL_FINGERPRINT",
+  "status": "error",
+  "errorReason": "sensor_timeout"
+}`}
+                    </pre>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-bold text-slate-700 mb-1.5">3. Expected Cloud Acknowledgment (HTTP 200 OK):</p>
+                    <pre className="p-3 bg-slate-900 text-emerald-400 rounded-lg text-xs font-mono overflow-x-auto">
+{`{
+  "ok": true,
+  "ack": true,
+  "success": true,
+  "message": "Command result recorded successfully for terminal DEV_TERM_01",
+  "commandId": "cmd_enroll_9021",
+  "status": "success",
+  "slotNumber": 3
+}`}
+                    </pre>
+                  </div>
+
+                  <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 text-xs text-amber-800">
+                    <span className="font-semibold text-amber-950">Terminal-Initiated Enrollments:</span> If a technician enrolls a finger directly via the on-device keypad menu without a web dashboard command, send with <code>&quot;source&quot;: &quot;terminal&quot;</code> and omit <code>commandId</code>. The backend will automatically bind the slot to the user.
                   </div>
                 </div>
               )}
