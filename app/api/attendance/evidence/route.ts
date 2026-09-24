@@ -5,20 +5,40 @@ export async function GET() {
   try {
     const db = await readDb();
     
-    const enriched = db.images.map(img => {
+    const capturedItems = db.images.map(img => {
       const user = db.users.find(u => u.id === img.userId);
       const attendance = db.attendance.find(a => a.id === img.attendanceId);
       return {
         ...img,
         user: { name: user?.name || 'Unknown', role: user?.role || 'Unknown' },
-        attendance: { date: attendance?.date, status: attendance?.status }
+        attendance: { date: attendance?.date, status: attendance?.status },
+        uploadStatus: 'captured' as const
       };
     });
-    
-    // Sort descending
-    enriched.sort((a, b) => new Date(b.captureTime).getTime() - new Date(a.captureTime).getTime());
 
-    return NextResponse.json(enriched);
+    // Gracefully include PIN attendance records where photo upload dropped across network outage
+    const missingPhotoItems = db.attendance
+      .filter(a => a.checkInMode === 'pin' && !db.images.some(img => img.attendanceId === a.id))
+      .map(a => {
+        const user = db.users.find(u => u.id === a.userId);
+        return {
+          id: `DROPPED_${a.id}`,
+          attendanceId: a.id,
+          userId: a.userId,
+          captureTime: a.checkInTime || a.createdAt,
+          authMode: 'pin' as const,
+          storageRef: '',
+          uploadStatus: 'upload_dropped' as const,
+          user: { name: user?.name || 'Unknown', role: user?.role || 'Unknown' },
+          attendance: { date: a.date, status: a.status },
+          reason: 'Photo upload dropped during Wi-Fi interruption (non-retried by firmware). Attendance verified via secure PIN.'
+        };
+      });
+
+    const combined = [...capturedItems, ...missingPhotoItems];
+    combined.sort((a, b) => new Date(b.captureTime).getTime() - new Date(a.captureTime).getTime());
+
+    return NextResponse.json(combined);
   } catch (err) {
     return NextResponse.json({ error: 'Failed to fetch evidence' }, { status: 500 });
   }
@@ -85,10 +105,21 @@ export async function POST(req: Request) {
       userId,
       captureTime: new Date().toISOString(),
       authMode: 'pin' as const,
-      storageRef: imageBase64 || storageRef || '/evidence/camera_capture_placeholder.jpg'
+      storageRef: imageBase64 || storageRef || '/evidence/camera_capture_placeholder.jpg',
+      uploadStatus: 'captured' as const
     };
 
     db.images.unshift(newImage);
+
+    // If attendance record exists, mark hasImage true and status captured
+    if (linkedAttendanceId) {
+      const attIndex = db.attendance.findIndex(a => a.id === linkedAttendanceId);
+      if (attIndex !== -1) {
+        db.attendance[attIndex].hasImage = true;
+        db.attendance[attIndex].evidenceStatus = 'captured';
+      }
+    }
+
     const { writeDb } = await import('@/lib/db');
     await writeDb(db);
 

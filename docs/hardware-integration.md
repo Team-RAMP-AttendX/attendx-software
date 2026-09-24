@@ -1,7 +1,7 @@
 # Hardware Integration Contract
 
 ## Overview
-This document defines the API contract between the AttendX physical terminal (ESP32) and the Backend API.
+This document defines the API contract between the AttendX physical terminal (ESP32 with DY50 Optical Fingerprint Sensor and ESP-CAM) and the Backend API.
 
 ## Endpoints
 

@@ -5,38 +5,66 @@ import { Device } from '@/types';
 export async function GET() {
   try {
     const db = await readDb();
+    const now = Date.now();
+    let dbModified = false;
 
-    // Enrich devices with default hardware subsystems if missing
-    const enrichedDevices: Device[] = db.devices.map((device, index) => ({
-      ...device,
-      name: device.name || (index === 0 ? 'Main Entrance Terminal' : `Terminal Unit ${index + 1}`),
-      location: device.location || (index === 0 ? 'Administration Building, Gate 1' : `Wing ${String.fromCharCode(65 + index)} Hallway`),
-      ipAddress: device.ipAddress || `192.168.1.${101 + index}`,
-      macAddress: device.macAddress || `24:0A:C4:B8:3A:${(10 + index).toString(16).toUpperCase()}`,
-      firmwareVersion: device.firmwareVersion || 'AttendX-FW v2.4.1',
-      esp32Heap: device.esp32Heap || '284 KB Free / 520 KB Total',
-      fingerprintStatus: device.fingerprintStatus || 'SMF V1.7 Ready (UART 57600)',
-      cameraStatus: device.cameraStatus || 'ESP-CAM Standby (SVGA OV2640)',
-      keypadStatus: device.keypadStatus || '4x4 Matrix Active (50ms debounce)',
-      lcdStatus: device.lcdStatus || '20x4 I2C LCD Ready (0x27)',
-      lcdText: device.lcdText || [
-        '** ATTENDX TERMINAL **',
-        'Ready for Scan...',
-        'Time: 08:57 AM [SYNC]',
-        `Net: ${device.wifiStatus.toUpperCase()} | Bat:${device.batteryStatus}%`
-      ],
-      voltage: device.voltage || '4.15V (Nominal 3.7V Li-ion)',
-      maxSlots: device.maxSlots || 300,
-      enrolledFingerprints: device.enrolledFingerprints !== undefined 
-        ? device.enrolledFingerprints 
-        : db.fingerprints.filter(f => f.status === 'Active' && f.enrolledTerminals?.includes(device.id)).length || (index === 0 ? 2 : 0),
-      freeSlots: device.freeSlots !== undefined 
-        ? device.freeSlots 
-        : (device.maxSlots || 300) - (device.enrolledFingerprints !== undefined ? device.enrolledFingerprints : 2),
-      heartbeatIntervalSeconds: device.heartbeatIntervalSeconds || 30,
-      pinFallbackEnabled: device.pinFallbackEnabled ?? true,
-      cameraEvidenceEnabled: device.cameraEvidenceEnabled ?? true
-    }));
+    // Enrich devices with dynamic heartbeat liveness and hardware subsystems
+    const enrichedDevices: Device[] = db.devices.map((device, index) => {
+      const intervalSec = device.heartbeatIntervalSeconds || 30;
+      const timeoutThresholdMs = intervalSec * 2.5 * 1000; // e.g. 75 seconds
+      const lastSyncMs = device.lastSync ? new Date(device.lastSync).getTime() : 0;
+      const secondsSinceLastHeartbeat = lastSyncMs > 0 ? Math.max(0, Math.floor((now - lastSyncMs) / 1000)) : 999999;
+      
+      // Real-time evaluation: terminal is only ONLINE if a telemetry heartbeat arrived within the threshold
+      const isAlive = lastSyncMs > 0 && (now - lastSyncMs) <= timeoutThresholdMs;
+      const computedStatus: 'ONLINE' | 'OFFLINE' = isAlive ? 'ONLINE' : 'OFFLINE';
+      const computedWifi: 'Connected' | 'Disconnected' = isAlive ? (device.wifiStatus || 'Connected') : 'Disconnected';
+
+      if (device.status !== computedStatus || device.wifiStatus !== computedWifi) {
+        device.status = computedStatus;
+        device.wifiStatus = computedWifi;
+        dbModified = true;
+      }
+
+      return {
+        ...device,
+        status: computedStatus,
+        wifiStatus: computedWifi,
+        heartbeatTimedOut: !isAlive,
+        secondsSinceLastHeartbeat,
+        name: device.name || (index === 0 ? 'Main Campus Terminal A' : `Terminal Unit ${index + 1}`),
+        location: device.location || (index === 0 ? 'Administration Building, Gate 1' : `Wing ${String.fromCharCode(65 + index)} Hallway`),
+        ipAddress: device.ipAddress || `192.168.1.${101 + index}`,
+        macAddress: device.macAddress || `24:0A:C4:B8:3A:${(10 + index).toString(16).toUpperCase()}`,
+        firmwareVersion: device.firmwareVersion || 'AttendX-FW v2.4.1',
+        esp32Heap: device.esp32Heap || '284 KB Free / 520 KB Total',
+        fingerprintStatus: device.fingerprintStatus || 'DY50 Ready (UART 57600)',
+        cameraStatus: device.cameraStatus || 'ESP-CAM Standby (SVGA OV2640)',
+        keypadStatus: device.keypadStatus || '4x4 Matrix Active (50ms debounce)',
+        lcdStatus: device.lcdStatus || '20x4 I2C LCD Ready (0x27)',
+        lcdText: device.lcdText || [
+          '** ATTENDX TERMINAL **',
+          isAlive ? 'Ready for Scan...' : 'Hardware Inactive',
+          isAlive ? 'Time: Synced' : 'Awaiting Heartbeat...',
+          `Net: ${computedWifi.toUpperCase()} | Bat:${device.batteryStatus || 0}%`
+        ],
+        voltage: device.voltage || '4.15V (Nominal 3.7V Li-ion)',
+        maxSlots: device.maxSlots || 300,
+        enrolledFingerprints: device.enrolledFingerprints !== undefined 
+          ? device.enrolledFingerprints 
+          : db.fingerprints.filter(f => f.status === 'Active' && f.enrolledTerminals?.includes(device.id)).length || (index === 0 ? 2 : 0),
+        freeSlots: device.freeSlots !== undefined 
+          ? device.freeSlots 
+          : (device.maxSlots || 300) - (device.enrolledFingerprints !== undefined ? device.enrolledFingerprints : 2),
+        heartbeatIntervalSeconds: intervalSec,
+        pinFallbackEnabled: device.pinFallbackEnabled ?? true,
+        cameraEvidenceEnabled: device.cameraEvidenceEnabled ?? true
+      };
+    });
+
+    if (dbModified) {
+      await writeDb(db);
+    }
 
     return NextResponse.json(enrichedDevices);
   } catch (err) {
@@ -72,7 +100,7 @@ export async function POST(req: Request) {
       macAddress: body.macAddress || `24:0A:C4:D5:19:${(20 + db.devices.length).toString(16).toUpperCase()}`,
       firmwareVersion: 'AttendX-FW v2.4.1',
       esp32Heap: '292 KB Free / 520 KB Total',
-      fingerprintStatus: 'SMF V1.7 Ready (UART 57600)',
+      fingerprintStatus: 'DY50 Ready (UART 57600)',
       cameraStatus: 'ESP-CAM Standby (SVGA OV2640)',
       keypadStatus: '4x4 Matrix Active (50ms debounce)',
       lcdStatus: '20x4 I2C LCD Ready (0x27)',

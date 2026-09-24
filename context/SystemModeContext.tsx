@@ -238,10 +238,16 @@ export function SystemModeProvider({ children }: { children: React.ReactNode }) 
     setIsResettingDb(true);
     try {
       const res = await fetch('/api/admin/reset', { method: 'POST' });
-      const data = await res.json();
+      const text = await res.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(text);
+      } catch {
+        // Fallback
+      }
       return {
-        success: data.success ?? true,
-        message: data.message || 'Database reset successfully to zero state.'
+        success: data?.success ?? true,
+        message: data?.message || 'Database reset successfully to zero state.'
       };
     } catch (err: unknown) {
       return {

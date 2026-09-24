@@ -1,7 +1,7 @@
 "use client"
 import React, { useEffect, useState, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Users, UserCheck, UserX, Clock, Fingerprint, Hash, HardDrive, Camera, Sparkles, Activity, CheckCircle2 } from 'lucide-react'
+import { Users, UserCheck, UserX, Clock, Fingerprint, Hash, HardDrive, Camera, CameraOff, Sparkles, Activity, CheckCircle2 } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, LineChart, Line, CartesianGrid, XAxis, YAxis } from 'recharts'
 import { cn } from '@/lib/utils'
 import { useSystemMode } from '@/context/SystemModeContext'
@@ -280,6 +280,14 @@ export default function DashboardPage() {
                       </span>
                       <span className="text-slate-300">•</span>
                       <span className="text-[11px] font-medium text-slate-700 capitalize">{record.checkInMode}</span>
+                      {record.offlineBuffered && (
+                        <>
+                          <span className="text-slate-300">•</span>
+                          <span className="text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded flex items-center" title="Replayed from terminal offline buffer after outage">
+                            <Clock className="w-2.5 h-2.5 mr-1 text-amber-600" /> Buffered
+                          </span>
+                        </>
+                      )}
                       {record.status === 'Late' && (
                         <>
                           <span className="text-slate-300">•</span>
@@ -288,7 +296,24 @@ export default function DashboardPage() {
                           </span>
                         </>
                       )}
-                      {record.hasImage && (
+                      {record.checkInMode === 'pin' && (
+                        record.hasImage ? (
+                          <>
+                            <span className="text-slate-300">•</span>
+                            <span className="text-[10px] font-medium text-indigo-600 flex items-center">
+                              <Camera className="w-3 h-3 mr-1"/> Evidence
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-slate-300">•</span>
+                            <span className="text-[10px] font-normal text-slate-400 flex items-center" title="Photo dropped mid-upload during outage; PIN verified">
+                              <CameraOff className="w-2.5 h-2.5 mr-1 text-slate-400"/> No Photo (Outage)
+                            </span>
+                          </>
+                        )
+                      )}
+                      {record.checkInMode === 'fingerprint' && record.hasImage && (
                         <>
                           <span className="text-slate-300">•</span>
                           <span className="text-[10px] font-medium text-indigo-600 flex items-center">

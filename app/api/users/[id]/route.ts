@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { readDb, writeDb } from '@/lib/db';
+import { readDb, writeDb, deleteUserDoc, saveUserDoc } from '@/lib/db';
 
 export async function PATCH(req: Request, props: { params: Promise<{ id: string }> }) {
   try {
@@ -14,7 +14,7 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
     }
     
     // Handle specific fields
-    if (body.name !== undefined) db.users[userIndex].name = body.name;
+    if (body.name !== undefined) db.users[userIndex].name = body.name.trim();
     if (body.role !== undefined) db.users[userIndex].role = body.role;
     if (body.status !== undefined) db.users[userIndex].status = body.status;
     
@@ -38,7 +38,7 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
         registrationDate: new Date().toISOString(),
         status: 'Active',
         slotNumber: nextSlot,
-        templateData: `SMF17_FP_${params.id}_TEMPLATE_HEX_${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+        templateData: `DY50_FP_${params.id}_TEMPLATE_HEX_${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
         enrolledTerminals: body.terminalId ? [body.terminalId] : db.devices.map(d => d.id)
       });
     } else if (body.removeFingerprint) {
@@ -46,6 +46,7 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
     }
     
     await writeDb(db);
+    await saveUserDoc(db.users[userIndex]);
     
     return NextResponse.json({
       ...db.users[userIndex],
@@ -67,14 +68,18 @@ export async function DELETE(req: Request, props: { params: Promise<{ id: string
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
     
-    // Remove user, fingerprints, and unlinked images/attendance if needed
+    // Permanently remove user and fingerprints from Firestore
+    await deleteUserDoc(params.id);
+    
+    // Also remove from in-memory cache and commit
     db.users.splice(userIndex, 1);
     db.fingerprints = db.fingerprints.filter(fp => fp.userId !== params.id);
     
     await writeDb(db);
     
-    return NextResponse.json({ success: true, message: `User ${params.id} deleted` });
+    return NextResponse.json({ success: true, message: `User ${params.id} deleted successfully` });
   } catch (err) {
+    console.error('Delete user error:', err);
     return NextResponse.json({ error: 'Failed to delete user' }, { status: 500 });
   }
 }

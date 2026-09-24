@@ -9,6 +9,7 @@ import {
   UserCheck, 
   CheckCircle2, 
   AlertCircle, 
+  AlertTriangle,
   Radio, 
   RefreshCw, 
   Sliders, 
@@ -45,8 +46,9 @@ export function EnrollFingerprintModal({
   const [targetSlot, setTargetSlot] = useState<number>(1)
   
   // Status tracking
-  const [status, setStatus] = useState<'IDLE' | 'ARMING' | 'WAITING_FOR_FINGER' | 'SUCCESS' | 'FAILED'>('IDLE')
+  const [status, setStatus] = useState<'IDLE' | 'ARMING' | 'PENDING_TERMINAL_PICKUP' | 'WAITING_FOR_FINGER' | 'SUCCESS' | 'FAILED'>('IDLE')
   const [statusMessage, setStatusMessage] = useState<string>('')
+  const [elapsedSeconds, setElapsedSeconds] = useState<number>(0)
   const [enrolledResult, setEnrolledResult] = useState<{
     enrolledSlots: number
     freeSlots: number
@@ -136,8 +138,9 @@ export function EnrollFingerprintModal({
     if (!selectedUser) return
 
     setStatus('ARMING')
-    setStatusMessage(`Sending enrollment command to terminal ${device.id}...`)
+    setStatusMessage(`Queuing enrollment command for terminal ${device.id}...`)
     setFailureReason('')
+    setElapsedSeconds(0)
 
     try {
       // Step 1: Queue job for ESP32 and arm the physical terminal
@@ -153,21 +156,24 @@ export function EnrollFingerprintModal({
       })
 
       if (!armRes.ok) {
-        throw new Error('Failed to arm terminal for enrollment.')
+        throw new Error('Failed to queue terminal enrollment command.')
       }
-
-      setStatus('WAITING_FOR_FINGER')
-      setStatusMessage(`Terminal armed! Waiting for ${selectedUser.name} to place finger on optical sensor (Slot #${targetSlot})...`)
 
       const armData = await armRes.json()
       const currentJobId = armData.job?.jobId
 
-      setStatus('WAITING_FOR_FINGER')
-      setStatusMessage(`Terminal ${device.id} armed! Waiting for physical finger placement on optical sensor (Target Slot #${targetSlot})...`)
+      setStatus('PENDING_TERMINAL_PICKUP')
+      setStatusMessage(`Command queued in Firestore! Waiting for terminal ${device.id} to fetch command on next heartbeat...`)
 
-      // Poll real job status from terminal
+      // Track elapsed seconds
+      const startTime = Date.now()
+      const timerInterval = setInterval(() => {
+        setElapsedSeconds(Math.floor((Date.now() - startTime) / 1000))
+      }, 1000)
+
+      // Poll real job status from terminal (up to 90 seconds to allow for 10-25s human finger placement)
       let attempts = 0
-      const maxAttempts = 30 // 60 seconds (every 2s)
+      const maxAttempts = 45 // 90 seconds (every 2s)
       const pollInterval = setInterval(async () => {
         attempts++
         try {
@@ -175,8 +181,14 @@ export function EnrollFingerprintModal({
           const pollRes = await fetch(`/api/devices/enrollment?jobId=${currentJobId}&deviceId=${encodeURIComponent(device.id)}`)
           if (pollRes.ok) {
             const pollData = await pollRes.json()
-            if (pollData.status === 'COMPLETED') {
+
+            // If terminal has acknowledged or job is pending scan
+            if (pollData.status === 'PENDING_SCAN') {
+              setStatus('WAITING_FOR_FINGER')
+              setStatusMessage(`Terminal armed! Waiting for ${selectedUser.name} to place finger twice on DY50 optical sensor (Slot #${targetSlot})...`)
+            } else if (pollData.status === 'COMPLETED') {
               clearInterval(pollInterval)
+              clearInterval(timerInterval)
               setStatus('SUCCESS')
               setStatusMessage(`Hardware confirmed! Successfully registered fingerprint for ${selectedUser.name} in Slot #${targetSlot}!`)
               setEnrolledResult({
@@ -190,8 +202,9 @@ export function EnrollFingerprintModal({
               return
             } else if (pollData.status === 'FAILED') {
               clearInterval(pollInterval)
+              clearInterval(timerInterval)
               setStatus('FAILED')
-              setFailureReason(pollData.job?.reason || 'Terminal reported scan failure or timeout.')
+              setFailureReason(pollData.job?.reason || 'Terminal reported scan failure or sensor timeout.')
               return
             }
           }
@@ -201,10 +214,9 @@ export function EnrollFingerprintModal({
 
         if (attempts >= maxAttempts) {
           clearInterval(pollInterval)
-          if (status === 'WAITING_FOR_FINGER') {
-            setStatus('FAILED')
-            setFailureReason('Enrollment timed out: No finger placement received from physical ESP32 terminal after 60 seconds.')
-          }
+          clearInterval(timerInterval)
+          setStatus('FAILED')
+          setFailureReason('Enrollment timed out: No hardware scan completion received after 90 seconds. Ensure the ESP32 terminal is powered on, connected to Wi-Fi, and user places finger firmly twice on the DY50 sensor.')
         }
       }, 2000)
 
@@ -310,7 +322,7 @@ export function EnrollFingerprintModal({
             <div className="flex items-center justify-between text-xs">
               <span className="font-semibold text-slate-700 flex items-center">
                 <HardDrive className="w-3.5 h-3.5 mr-1.5 text-indigo-600" />
-                Optical Sensor Storage Slots (AS608 / SMF V1.7)
+                Optical Sensor Storage Slots (DY50 / Optical)
               </span>
               <span className="font-mono text-slate-500">
                 Capacity: {maxSlots} Slots
@@ -335,6 +347,19 @@ export function EnrollFingerprintModal({
               </span>
             </div>
           </div>
+
+          {/* Terminal Offline Notice */}
+          {device.status === 'OFFLINE' && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 flex items-start space-x-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="font-semibold text-amber-800">Terminal is currently Offline (Heartbeat Inactive)</p>
+                <p className="text-amber-700 mt-0.5">
+                  You can queue this enrollment command now. The command will remain queued in the database and will be delivered to the ESP32 terminal as soon as it powers on and establishes its Wi-Fi telemetry connection.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Form Step: Select User and Slot */}
           {status !== 'SUCCESS' && (
@@ -382,7 +407,7 @@ export function EnrollFingerprintModal({
                     placeholder="e.g. 1"
                   />
                   <p className="text-[11px] text-slate-500">
-                    Flash index on AS608 optical sensor
+                    Flash index on DY50 optical sensor
                   </p>
                 </div>
 
@@ -406,25 +431,58 @@ export function EnrollFingerprintModal({
             <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 text-xs text-blue-900 flex items-center space-x-3">
               <RefreshCw className="w-5 h-5 text-blue-600 animate-spin flex-shrink-0" />
               <div>
-                <p className="font-bold">Arming Optical Sensor...</p>
+                <p className="font-bold">Queuing Enrollment Command...</p>
                 <p className="text-blue-700 mt-0.5">{statusMessage}</p>
               </div>
             </div>
           )}
 
+          {status === 'PENDING_TERMINAL_PICKUP' && (
+            <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-200 text-xs text-indigo-950 space-y-2.5">
+              <div className="flex items-center justify-between font-bold text-indigo-900">
+                <span className="flex items-center space-x-2">
+                  <RefreshCw className="w-4 h-4 text-indigo-600 animate-spin" />
+                  <span>STEP 1: COMMAND QUEUED (AWAITING TERMINAL PICKUP)</span>
+                </span>
+                <span className="font-mono text-indigo-600 text-[11px] bg-indigo-100 px-2 py-0.5 rounded">
+                  {elapsedSeconds}s elapsed
+                </span>
+              </div>
+              <p className="text-indigo-800 leading-relaxed">
+                The enrollment command is staged on the server. The ESP32 terminal will receive it on its next telemetry poll (within 30 seconds).
+              </p>
+              <div className="p-2.5 rounded bg-slate-900 font-mono text-[11px] text-indigo-300 border border-indigo-800">
+                [Server Queue]: ENROLL_FINGERPRINT -&gt; Terminal: {device.id} • Target Slot: #{targetSlot}
+              </div>
+            </div>
+          )}
+
           {status === 'WAITING_FOR_FINGER' && (
-            <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-2">
-              <div className="flex items-center space-x-2 font-bold text-amber-950">
-                <Radio className="w-4 h-4 text-amber-600 animate-pulse" />
-                <span>TERMINAL ARMED: SCAN IN PROGRESS</span>
+            <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-3">
+              <div className="flex items-center justify-between font-bold text-amber-950">
+                <span className="flex items-center space-x-2">
+                  <Radio className="w-4 h-4 text-amber-600 animate-pulse" />
+                  <span>STEP 2: SCAN IN PROGRESS (2-PASS PLACEMENT)</span>
+                </span>
+                <span className="font-mono text-amber-700 text-[11px] bg-amber-100 px-2 py-0.5 rounded">
+                  {elapsedSeconds}s elapsed
+                </span>
               </div>
               <p className="text-amber-800 leading-relaxed">
-                {statusMessage}
+                Terminal armed! Biometric registration requires <strong>two finger placements</strong> on the DY50 optical sensor to extract features and synthesize a valid template (10–25s typical duration).
               </p>
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div className="p-2 bg-white/80 rounded border border-amber-200 text-slate-700">
+                  <strong className="text-amber-900">Pass 1:</strong> Place finger flat on blue sensor light.
+                </div>
+                <div className="p-2 bg-white/80 rounded border border-amber-200 text-slate-700">
+                  <strong className="text-amber-900">Pass 2:</strong> Lift and place same finger again.
+                </div>
+              </div>
               <div className="p-2.5 rounded bg-black/80 font-mono text-[11px] text-emerald-400 border border-emerald-500/30">
                 [ESP32 LCD]: ** ENROLL MODE **<br />
                 User: {users.find(u => u.id === selectedUserId)?.name.substring(0, 14)}<br />
-                Place finger on sensor... Slot #{targetSlot}
+                Place finger on DY50... Slot #{targetSlot} (1/2 &amp; 2/2)
               </div>
             </div>
           )}

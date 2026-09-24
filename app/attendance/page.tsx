@@ -1,7 +1,7 @@
 "use client"
 import React, { useEffect, useState, useMemo } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { Fingerprint, Hash, Camera, Clock, CheckCircle2, AlertCircle, Sparkles, Plus } from 'lucide-react'
+import { Fingerprint, Hash, Camera, CameraOff, Clock, CheckCircle2, AlertCircle, Sparkles, Plus, WifiOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSystemMode } from '@/context/SystemModeContext'
 
@@ -145,11 +145,29 @@ export default function AttendanceLiveFeed() {
                           {record.checkInMode}
                         </span>
                       </div>
-                      {record.hasImage && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
-                          <Camera className="w-3 h-3 mr-1" /> Evidence Logged
-                        </span>
-                      )}
+                      <div className="flex flex-wrap items-center gap-1.5 justify-end">
+                        {record.offlineBuffered && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-800 border border-amber-200" title="Captured locally on terminal SPIFFS during network outage and burst-replayed chronologically upon Wi-Fi recovery.">
+                            <Clock className="w-3 h-3 mr-1 text-amber-600" /> Buffered Replay
+                          </span>
+                        )}
+                        {record.checkInMode === 'pin' && (
+                          record.hasImage ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
+                              <Camera className="w-3 h-3 mr-1" /> Evidence Logged
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-slate-50 text-slate-500 border border-slate-200" title="Photo capture dropped across network outage (non-retried). PIN authentication was verified safely.">
+                              <CameraOff className="w-3 h-3 mr-1 text-slate-400" /> Photo Dropped (Outage)
+                            </span>
+                          )
+                        )}
+                        {record.checkInMode === 'fingerprint' && record.hasImage && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
+                            <Camera className="w-3 h-3 mr-1" /> Evidence Logged
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </CardContent>

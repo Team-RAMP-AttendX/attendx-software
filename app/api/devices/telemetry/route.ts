@@ -85,7 +85,7 @@ export async function POST(req: Request) {
         macAddress: macAddress || '24:0A:C4:00:00:01',
         firmwareVersion: firmwareVersion || 'AttendX-FW v2.4.1',
         esp32Heap: esp32Heap || '280 KB Free / 520 KB Total',
-        fingerprintStatus: fingerprintStatus || 'SMF V1.7 Ready (UART 57600)',
+        fingerprintStatus: fingerprintStatus || 'DY50 Ready (UART 57600)',
         cameraStatus: cameraStatus || 'ESP-CAM Standby (SVGA OV2640)',
         keypadStatus: keypadStatus || '4x4 Matrix Active (50ms debounce)',
         lcdStatus: lcdStatus || '20x4 I2C LCD Ready (0x27)',

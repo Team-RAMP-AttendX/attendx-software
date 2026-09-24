@@ -86,20 +86,16 @@ export default function DevicesPage() {
   useEffect(() => {
     let active = true
     if (!isSimulationMode) {
-      fetch('/api/devices')
-        .then(res => res.json())
-        .then(data => {
-          if (active && Array.isArray(data)) {
-            setDevices(data)
-            setLoading(false)
-          }
-        })
-        .catch(() => {
-          if (active) setLoading(false)
-        })
+      fetchDevices()
+      const interval = setInterval(() => {
+        if (active) fetchDevices()
+      }, 10000)
+      return () => {
+        active = false
+        clearInterval(interval)
+      }
     }
-    return () => { active = false }
-  }, [isSimulationMode])
+  }, [isSimulationMode, fetchDevices])
 
   const activeDevices = isSimulationMode ? simState.devices : devices
 
@@ -500,8 +496,17 @@ export default function DevicesPage() {
                       "inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wider",
                       isOnline ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
                     )}>
-                      {isOnline && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></span>}
-                      {device.status}
+                      {isOnline ? (
+                        <>
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></span>
+                          ONLINE
+                        </>
+                      ) : (
+                        <>
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5"></span>
+                          OFFLINE
+                        </>
+                      )}
                     </span>
                   </div>
                 </div>
@@ -515,9 +520,9 @@ export default function DevicesPage() {
                         Network
                       </div>
                       <p className="text-sm font-semibold text-slate-900">
-                        {device.wifiStatus}
+                        {isOnline ? device.wifiStatus : 'Disconnected'}
                       </p>
-                      <p className="text-[11px] font-mono text-slate-500">{device.ipAddress || '192.168.1.101'}</p>
+                      <p className="text-[11px] font-mono text-slate-500">{isOnline ? (device.ipAddress || '192.168.1.101') : 'Awaiting IP'}</p>
                     </div>
 
                     <div className="space-y-1">
@@ -545,12 +550,20 @@ export default function DevicesPage() {
                     <div className="space-y-1">
                       <div className="flex items-center text-xs text-slate-500 font-medium uppercase tracking-wider">
                         <Clock className="w-3.5 h-3.5 text-slate-400 mr-1.5" />
-                        Last Sync
+                        Heartbeat Liveness
                       </div>
                       <p className="text-sm font-semibold text-slate-900">
-                        {new Date(device.lastSync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {isOnline 
+                          ? new Date(device.lastSync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                          : (device.secondsSinceLastHeartbeat !== undefined && device.secondsSinceLastHeartbeat < 86400
+                              ? (device.secondsSinceLastHeartbeat > 3600
+                                  ? `${Math.floor(device.secondsSinceLastHeartbeat / 3600)}h ago`
+                                  : `${Math.max(1, Math.floor(device.secondsSinceLastHeartbeat / 60))}m ago`)
+                              : 'No Heartbeat')}
                       </p>
-                      <p className="text-[11px] text-slate-500">Auto-heartbeat</p>
+                      <p className="text-[11px] text-slate-500">
+                        {isOnline ? 'Active (<30s ping)' : 'Timed out (>75s)'}
+                      </p>
                     </div>
                   </div>
 
@@ -565,7 +578,7 @@ export default function DevicesPage() {
                       <div className="flex items-center space-x-2 p-2 rounded bg-white border border-slate-200">
                         <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
                         <span className="font-medium text-slate-700 truncate">
-                          SMF V1.7 ({device.enrolledFingerprints !== undefined ? device.enrolledFingerprints : 2} Enrolled)
+                          DY50 ({device.enrolledFingerprints !== undefined ? device.enrolledFingerprints : 2} Enrolled)
                         </span>
                       </div>
                       <div className="flex items-center space-x-2 p-2 rounded bg-white border border-slate-200">
@@ -602,13 +615,13 @@ export default function DevicesPage() {
 
                   {/* Offline Warning Notice if disconnected */}
                   {!isOnline && (
-                    <div className="p-3.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-1">
+                    <div className="p-3.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-1.5">
                       <div className="flex items-center space-x-1.5 font-semibold text-amber-800">
-                        <AlertTriangle className="w-4 h-4 text-amber-600" />
-                        <span>Resilience Mode Active: Terminal is Operating Offline</span>
+                        <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                        <span>Terminal Hardware Inactive / Operating Offline</span>
                       </div>
-                      <p className="text-amber-700 pl-5">
-                        Attendance scans and PIN fallbacks are safely persisted in local flash storage. When Wi-Fi is re-established, the sync engine will automatically upload all buffered records.
+                      <p className="text-amber-700 pl-5 leading-relaxed">
+                        No telemetry heartbeat received within the last 75 seconds. If the physical ESP32 terminal is powered off or disconnected from Wi-Fi, check-ins are safely saved in local SPIFFS flash. When the ESP32 powers on and establishes Wi-Fi, it will automatically switch to <strong>ONLINE</strong> and replay buffered events chronologically.
                       </p>
                     </div>
                   )}
@@ -795,11 +808,11 @@ export default function DevicesPage() {
                   </div>
                 </div>
 
-                {/* 2. SMF V1.7 Fingerprint Sensor */}
+                {/* 2. DY50 Fingerprint Sensor */}
                 <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2">
                   <div className="flex items-center space-x-2 text-slate-800 font-bold text-xs uppercase tracking-wider">
                     <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                    <span>SMF V1.7 Optical Sensor</span>
+                    <span>DY50 Optical Sensor</span>
                   </div>
                   <div className="text-xs space-y-1 text-slate-600">
                     <div className="flex justify-between"><span className="text-slate-500">Resolution:</span><span className="font-semibold text-slate-800">500 DPI Optical Prism</span></div>
@@ -1023,7 +1036,7 @@ export default function DevicesPage() {
                     Biometric Enrollment & Hardware Provisioning
                   </CardTitle>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Terminal: <strong className="text-slate-800">{selectedBioSyncDevice.name || selectedBioSyncDevice.id}</strong> ({selectedBioSyncDevice.id}) • Optical Sensor: SMF V1.7
+                    Terminal: <strong className="text-slate-800">{selectedBioSyncDevice.name || selectedBioSyncDevice.id}</strong> ({selectedBioSyncDevice.id}) • Optical Sensor: DY50
                   </p>
                 </div>
               </div>
@@ -1048,7 +1061,7 @@ export default function DevicesPage() {
                   </span>
                 </div>
                 <p className="text-indigo-800 leading-relaxed">
-                  When a new terminal is added to AttendX, it can synchronize all enrolled fingerprint templates stored in the central database directly into its on-board SMF V1.7 optical flash memory. Alternatively, you can trigger live on-terminal enrollment for any database user right here.
+                  When a new terminal is added to AttendX, it can synchronize all enrolled fingerprint templates stored in the central database directly into its on-board DY50 optical flash memory. Alternatively, you can trigger live on-terminal enrollment for any database user right here.
                 </p>
               </div>
 
@@ -1085,7 +1098,7 @@ export default function DevicesPage() {
                       [LINE 3] User ID: {scanningUserId}
                     </div>
                     <div>
-                      [LINE 4] {scanStep === 'capturing' ? 'Pass 2/2: Verifying' : scanStep === 'saved' ? 'Synced to Central DB' : 'SMF V1.7 UART Ready'}
+                      [LINE 4] {scanStep === 'capturing' ? 'Pass 2/2: Verifying' : scanStep === 'saved' ? 'Synced to Central DB' : 'DY50 UART Ready'}
                     </div>
                   </div>
 
@@ -1331,7 +1344,7 @@ export default function DevicesPage() {
                       <span className="text-xs text-amber-700 font-semibold">Zero UART Buffer Overhead</span>
                     </div>
                     <p className="text-xs text-amber-900 leading-relaxed">
-                      You do <strong>not</strong> need to dump raw 512-byte character templates over UART from the AS608/SMF sensor! The optical sensor stores prints locally in Slot 1, 2, 3... When enrolling or scanning, simply reference the slot number. The backend maps slotNumber to the database user.
+                      You do <strong>not</strong> need to dump raw 512-byte character templates over UART from the DY50 optical sensor! The optical sensor stores prints locally in Slot 1, 2, 3... When enrolling or scanning, simply reference the slot number. The backend maps slotNumber to the database user.
                     </p>
                   </div>
 
@@ -1401,14 +1414,14 @@ export default function DevicesPage() {
                       <span className="text-xs text-slate-500">Real-time Scan or Offline SPIFFS Sync</span>
                     </div>
                     <p className="text-xs text-slate-600 leading-relaxed">
-                      When the AS608 optical sensor identifies a finger, the ESP32 can send either the resolved <code>userId</code> OR just the sensor <code>slotNumber</code> directly!
+                      When the DY50 optical sensor identifies a finger, the ESP32 can send either the resolved <code>userId</code> OR just the sensor <code>slotNumber</code> directly!
                     </p>
                   </div>
 
                   <div>
                     <p className="text-xs font-bold text-slate-700 mb-1.5">Sending via Slot Number (Simplest for ESP32):</p>
                     <pre className="p-4 bg-slate-900 text-slate-100 rounded-xl text-xs font-mono overflow-x-auto leading-relaxed border border-slate-800">
-{`// When AS608 reports match at Slot 3:
+{`// When DY50 reports match at Slot 3:
 {
   "deviceId": "DEV_TERM_01",
   "slotNumber": 3,

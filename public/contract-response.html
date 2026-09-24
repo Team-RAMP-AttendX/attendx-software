@@ -247,7 +247,7 @@
       </div>
       <div class="meta-item">
         <strong>Target Firmware</strong>
-        ESP32 (WROOM-32) + SMF V1.7 + ESP32-CAM
+        ESP32 (WROOM-32) + DY50 + ESP32-CAM
       </div>
       <div class="meta-item">
         <strong>Review Date</strong>
@@ -461,9 +461,26 @@
       <strong>Firmware Caution (Preventing Lockups & Flash Wear):</strong>
       <ul style="margin-left: 1.25rem; margin-top: 0.5rem;">
         <li><strong>Command Deduplication:</strong> Since telemetry poll happens every 30s, if the terminal takes 45 seconds to scan a finger, the same <code>commandId</code> might arrive in the next heartbeat. The terminal firmware <strong>must keep an active <code>in_progress_command_id</code> variable</strong> so it does not re-trigger an ongoing scan.</li>
-        <li><strong>Optical Sensor Timeout (SMF V1.7):</strong> When executing <code>ENROLL_FINGERPRINT</code>, set an explicit hardware timeout of <strong>25 seconds</strong> on the fingerprint reader. If no finger is placed, return <code>status: "error", errorReason: "sensor_timeout"</code> so the terminal LCD returns to the default ready screen.</li>
+        <li><strong>Optical Sensor Timeout (DY50):</strong> When executing <code>ENROLL_FINGERPRINT</code>, set an explicit hardware timeout of <strong>25 seconds</strong> on the DY50 optical fingerprint reader. If no finger is placed, return <code>status: "error", errorReason: "sensor_timeout"</code> so the terminal LCD returns to the default ready screen.</li>
         <li><strong>Slot 0 Protection:</strong> As correctly noted in your draft, slot <code>0</code> is strictly reserved for "No Match". The backend validates <code>slotNumber >= 1</code> on all operations.</li>
       </ul>
+    </div>
+
+    <!-- Section 4: Operational Behavioral Alignment -->
+    <h2>4. Operational Behavioral Considerations (Confirmed Cloud Alignment)</h2>
+    <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 1.25rem; margin-top: 1rem;">
+      <p style="font-weight: 700; color: #1e3a8a; margin-bottom: 0.75rem;">Backend Design Confirmed for Hardware Realities:</p>
+      <ol style="margin-left: 1.25rem; space-y: 0.75rem; font-size: 0.9rem; color: #334155;">
+        <li style="margin-bottom: 0.6rem;">
+          <strong>Evidence Photos Not Retried Across Outages (Confirmed):</strong> If Wi-Fi disconnects mid-stream during an ESP32-CAM upload, the check-in record is retained and marked as <code>hasImage: false</code> with <code>evidenceStatus: "upload_dropped"</code>. The dashboard and attendance audit logs display this gracefully with a clear outage badge without breaking or assuming an image exists.
+        </li>
+        <li style="margin-bottom: 0.6rem;">
+          <strong>Buffered Events Replay in Original Order (Confirmed):</strong> Following a multi-hour network outage, the ESP32 terminal will upload bursts of offline logs. The backend sorts all incoming batch events chronologically by physical <code>timestamp</code>, processes punctuality against the original scan time, and tags each record with <code>offlineBuffered: true</code> and <code>replayedAt</code>.
+        </li>
+        <li style="margin-bottom: 0.6rem;">
+          <strong>Asynchronous Command Execution & Pending State (Confirmed):</strong> Enrollment on the DY50 optical module requires a human subject to place their finger twice (Pass 1 feature extraction, Pass 2 template synthesis), taking 10–25+ seconds. The cloud does not expect synchronous completion on the next heartbeat. Commands enter a staged <code>PENDING</code> state on the server, with a 90-second timeout window, until the terminal explicitly posts its completion to <code>/api/devices/commands/result</code>.
+        </li>
+      </ol>
     </div>
 
     <!-- Sign-off footer -->

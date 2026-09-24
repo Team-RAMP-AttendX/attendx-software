@@ -108,13 +108,34 @@ export default function AdminAuthGate({ children }: { children: React.ReactNode 
       // 1. Call server to generate and record 5-minute OTP
       const res = await fetch('/api/auth/otp', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'SEND_OTP', email })
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ action: 'SEND_OTP', email: email.trim() })
       });
-      const data = await res.json();
 
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || 'Failed to dispatch verification code.');
+      const rawText = await res.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        // Handle HTML error responses from cloud reverse proxies or gateway interceptors
+        const isForbiddenOrDenied = res.status === 403 || res.status === 401 || /forbidden|unauthorized|denied|access/i.test(rawText);
+        if (isForbiddenOrDenied) {
+          throw new Error(
+            `Access Denied: "${email.trim()}" is not in our record of approved administrators. Only provisioned administrator emails can receive verification passcodes. Please contact the Master Administrator (redemptionjonathan1@gmail.com).`
+          );
+        }
+        throw new Error(
+          `Unable to verify administrator status. Please verify that "${email.trim()}" is provisioned as an approved administrator in the Admin Control panel.`
+        );
+      }
+
+      if (!res.ok || !data || !data.success) {
+        throw new Error(
+          data?.message || `Access Denied: "${email.trim()}" is not in our record of approved administrators.`
+        );
       }
 
       const generatedCode = data.previewCode;
@@ -174,7 +195,7 @@ export default function AdminAuthGate({ children }: { children: React.ReactNode 
         setSuccessMsg(`Security OTP generated! Ready for verification. Code preview: ${generatedCode}`);
       }
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'Error generating code.');
+      setErrorMsg(err instanceof Error ? err.message : 'Error generating verification code.');
     } finally {
       setIsLoading(false);
     }
@@ -193,17 +214,27 @@ export default function AdminAuthGate({ children }: { children: React.ReactNode 
     try {
       const res = await fetch('/api/auth/otp', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'VERIFY_OTP', email, otp: otpInput.trim() })
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ action: 'VERIFY_OTP', email: email.trim(), otp: otpInput.trim() })
       });
-      const data = await res.json();
 
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || 'Invalid or expired OTP code.');
+      const rawText = await res.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        throw new Error('Verification failed. Server returned an invalid response.');
+      }
+
+      if (!res.ok || !data || !data.success) {
+        throw new Error(data?.message || 'Invalid or expired OTP code.');
       }
 
       // Success
-      login(email, data.sessionToken);
+      login(email.trim(), data.sessionToken);
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : 'Verification failed.');
     } finally {
@@ -276,15 +307,48 @@ export default function AdminAuthGate({ children }: { children: React.ReactNode 
               <span>AttendX Admin Gate</span>
             </h1>
             <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
-              Hardware synchronized with ESP32-CAM, AS608 optical sensor, and Cloud Firestore.
+              Hardware synchronized with ESP32-CAM, DY50 optical sensor, and Cloud Firestore.
             </p>
           </div>
 
           {/* Status Messages */}
           {errorMsg && (
-            <div className="mb-4 p-3 rounded-xl bg-red-950/70 border border-red-800/50 text-red-200 text-xs flex items-start space-x-2">
-              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-              <span>{errorMsg}</span>
+            <div className="mb-4 p-3.5 rounded-xl bg-red-950/80 border border-red-800/60 text-red-200 text-xs flex flex-col space-y-2 shadow-lg animate-in fade-in duration-200">
+              <div className="flex items-start space-x-2.5">
+                <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <div className="font-semibold text-red-300 text-[13px] mb-0.5">
+                    {errorMsg.toLowerCase().includes('not in our record') || errorMsg.toLowerCase().includes('access denied') 
+                      ? 'Access Denied: Unapproved Administrator' 
+                      : 'Security Notification'}
+                  </div>
+                  <div className="text-red-200/90 leading-relaxed text-xs">
+                    {errorMsg}
+                  </div>
+                </div>
+              </div>
+              {errorMsg.toLowerCase().includes('not in our record') && (
+                <div className="pt-2 border-t border-red-900/60 flex flex-wrap items-center gap-2 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmail('redemptionjonathan1@gmail.com');
+                      setErrorMsg(null);
+                    }}
+                    className="text-indigo-300 hover:text-white underline underline-offset-2 transition-colors font-medium"
+                  >
+                    Use Master Admin (redemptionjonathan1@gmail.com)
+                  </button>
+                  <span className="text-red-500">•</span>
+                  <button
+                    type="button"
+                    onClick={handleLaunchSimulationDirectly}
+                    className="text-amber-300 hover:text-white underline underline-offset-2 transition-colors font-medium"
+                  >
+                    Launch Simulation Mode
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -510,7 +574,7 @@ export default function AdminAuthGate({ children }: { children: React.ReactNode 
         <div className="mt-4 flex items-center justify-between text-[11px] text-slate-400 px-2">
           <div className="flex items-center space-x-1.5">
             <Fingerprint className="w-3.5 h-3.5 text-indigo-400" />
-            <span>AS608 Optical Sensor</span>
+            <span>DY50 Optical Sensor</span>
           </div>
           <div className="flex items-center space-x-1.5">
             <Camera className="w-3.5 h-3.5 text-indigo-400" />

@@ -48,6 +48,14 @@ export default function UsersPage() {
   const [editRole, setEditRole] = useState<"Student" | "Staff" | "Admin">("Student")
   const [editStatus, setEditStatus] = useState<"Active" | "Inactive">("Active")
   const [isSavingEdit, setIsSavingEdit] = useState(false)
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
+
+  const showNotification = (message: string, type: 'success' | 'error' = 'success') => {
+    setNotification({ message, type })
+    setTimeout(() => {
+      setNotification(prev => prev?.message === message ? null : prev)
+    }, 3500)
+  }
 
   // Fingerprint Enrollment Modal
   const [enrollFpUser, setEnrollFpUser] = useState<UserItem | null>(null)
@@ -73,7 +81,7 @@ export default function UsersPage() {
     fetch('/api/users')
       .then(res => res.json())
       .then(data => {
-        setUsers(data)
+        if (Array.isArray(data)) setUsers(data)
       })
       .catch(console.error)
       .finally(() => {
@@ -116,18 +124,28 @@ export default function UsersPage() {
     e.preventDefault()
     if (!newName.trim()) return
     setIsAdding(true)
+    const addingName = newName.trim()
+    const addingRole = newRole
     try {
-      await fetch('/api/users', {
+      const res = await fetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName, role: newRole })
+        body: JSON.stringify({ name: addingName, role: addingRole })
       })
+      const created = await res.json()
+      if (created && created.id) {
+        setUsers(prev => [created, ...prev])
+        showNotification(`User ${created.name} added successfully.`)
+      } else {
+        showNotification(`User ${addingName} created.`)
+      }
       setIsModalOpen(false)
       setNewName("")
       setNewRole("Student")
       fetchUsers()
     } catch (err) {
       console.error(err)
+      showNotification("Failed to add user. Please try again.", "error")
     } finally {
       setIsAdding(false)
     }
@@ -135,6 +153,8 @@ export default function UsersPage() {
 
   const toggleStatus = async (user: UserItem) => {
     const newStatus = user.status === 'Active' ? 'Inactive' : 'Active'
+    setUsers(prev => prev.map(u => u.id === user.id ? { ...u, status: newStatus } : u))
+    showNotification(`User ${user.name} is now ${newStatus}.`)
     try {
       await fetch(`/api/users/${user.id}`, {
         method: 'PATCH',
@@ -144,27 +164,46 @@ export default function UsersPage() {
       fetchUsers()
     } catch (err) {
       console.error(err)
+      showNotification("Failed to update status on server.", "error")
     }
   }
 
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!editingUser || !editName.trim()) return
+    const targetId = editingUser.id
+    const updatedName = editName.trim()
+    const updatedRole = editRole
+    const updatedStatus = editStatus
+
     setIsSavingEdit(true)
+    // Instant optimistic update in local state
+    setUsers(prev => prev.map(u => u.id === targetId ? {
+      ...u,
+      name: updatedName,
+      role: updatedRole,
+      status: updatedStatus
+    } : u))
+    setEditingUser(null)
+    showNotification(`Changes saved for ${updatedName}.`)
+
     try {
-      await fetch(`/api/users/${editingUser.id}`, {
+      const res = await fetch(`/api/users/${targetId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: editName.trim(),
-          role: editRole,
-          status: editStatus
+          name: updatedName,
+          role: updatedRole,
+          status: updatedStatus
         })
       })
-      setEditingUser(null)
+      if (!res.ok) {
+        showNotification("Warning: Server update returned an error.", "error")
+      }
       fetchUsers()
     } catch (err) {
       console.error(err)
+      showNotification("Failed to sync edit with cloud database.", "error")
     } finally {
       setIsSavingEdit(false)
     }
@@ -172,26 +211,33 @@ export default function UsersPage() {
 
   const handleStartFpEnrollment = () => {
     if (!enrollFpUser) return
+    const targetId = enrollFpUser.id
+    const targetName = enrollFpUser.name
+
     setIsEnrollingFp(true)
     setFpEnrollStep('scanning')
     setTimeout(() => {
       setFpEnrollStep('verifying')
       setTimeout(async () => {
         try {
-          await fetch(`/api/users/${enrollFpUser.id}`, {
+          // Optimistically update fingerprint badge
+          setUsers(prev => prev.map(u => u.id === targetId ? { ...u, hasFingerprint: true } : u))
+          await fetch(`/api/users/${targetId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ enrollFingerprint: true })
           })
           setFpEnrollStep('success')
+          showNotification(`Fingerprint registered for ${targetName} on DY50 sensor.`)
           fetchUsers()
         } catch (err) {
           console.error(err)
+          showNotification("Failed to save fingerprint template.", "error")
         } finally {
           setIsEnrollingFp(false)
         }
-      }, 1500)
-    }, 1500)
+      }, 1200)
+    }, 1200)
   }
 
   const handleSavePin = async (e: React.FormEvent) => {
@@ -206,21 +252,29 @@ export default function UsersPage() {
       return
     }
 
+    const targetId = pinUser.id
+    const targetName = pinUser.name
     setIsSavingPin(true)
     setPinError("")
+
+    // Optimistically update PIN badge
+    setUsers(prev => prev.map(u => u.id === targetId ? { ...u, hasPin: true } : u))
+    setPinUser(null)
+    showNotification(`Keypad PIN configured for ${targetName}.`)
+
     try {
-      await fetch(`/api/users/${pinUser.id}`, {
+      await fetch(`/api/users/${targetId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pin: pinValue })
       })
-      setPinUser(null)
       setPinValue("")
       setConfirmPinValue("")
       fetchUsers()
     } catch (err) {
       setPinError("Failed to update PIN")
       console.error(err)
+      showNotification("Failed to update PIN on cloud server.", "error")
     } finally {
       setIsSavingPin(false)
     }
@@ -228,15 +282,26 @@ export default function UsersPage() {
 
   const handleDeleteUser = async () => {
     if (!deletingUser) return
+    const targetId = deletingUser.id
+    const targetName = deletingUser.name
+
     setIsDeleting(true)
+    // Instant optimistic removal from UI
+    setUsers(prev => prev.filter(u => u.id !== targetId))
+    setDeletingUser(null)
+    showNotification(`User ${targetName} deleted permanently.`)
+
     try {
-      await fetch(`/api/users/${deletingUser.id}`, {
+      const res = await fetch(`/api/users/${targetId}`, {
         method: 'DELETE'
       })
-      setDeletingUser(null)
+      if (!res.ok) {
+        showNotification("Failed to delete user on cloud server.", "error")
+      }
       fetchUsers()
     } catch (err) {
       console.error(err)
+      showNotification(`Error deleting user ${targetName}.`, "error")
     } finally {
       setIsDeleting(false)
     }
@@ -333,7 +398,7 @@ export default function UsersPage() {
                     No users found matching current filters.
                   </td>
                 </tr>
-              ) : paginatedUsers.map(user => (
+              ) : paginatedUsers.map((user, index) => (
                 <tr key={user.id} className="bg-white hover:bg-slate-50/70 transition-colors">
                   <td className="px-6 py-4">
                     <div className="flex flex-col">
@@ -392,105 +457,156 @@ export default function UsersPage() {
                       </span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-right relative">
-                    <button 
-                      onClick={(e) => { 
-                        e.stopPropagation(); 
-                        setOpenDropdown(openDropdown === user.id ? null : user.id); 
-                      }}
-                      className="p-1.5 text-slate-500 hover:text-slate-900 rounded-md hover:bg-slate-100 transition-colors border border-transparent hover:border-slate-200"
-                      title="User Actions"
-                    >
-                      <MoreVertical className="w-4 h-4" />
-                    </button>
-
-                    {/* Fully Functional Dropdown Menu */}
-                    {openDropdown === user.id && (
-                      <div 
-                        onClick={(e) => e.stopPropagation()} 
-                        className="absolute right-6 top-12 w-56 bg-white border border-slate-200 rounded-lg shadow-xl z-50 py-1.5 text-left text-xs divide-y divide-slate-100 animate-in fade-in zoom-in-95 duration-100"
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex items-center justify-end space-x-1 relative">
+                      {/* Quick Edit button */}
+                      <button 
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingUser(user);
+                          setEditName(user.name);
+                          setEditRole(user.role);
+                          setEditStatus(user.status);
+                          setOpenDropdown(null);
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-blue-600 rounded-md hover:bg-blue-50 transition-colors"
+                        title="Edit User Details"
                       >
-                        <div className="px-3 py-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                          Actions: {user.name}
-                        </div>
-                        
-                        <div className="py-1">
-                          <button 
-                            onClick={() => { setViewingUser(user); setOpenDropdown(null); }}
-                            className="w-full px-3 py-2 text-slate-700 hover:bg-slate-50 flex items-center space-x-2 transition-colors"
-                          >
-                            <Eye className="w-4 h-4 text-slate-400" />
-                            <span className="font-medium text-sm">View User Profile</span>
-                          </button>
-                          <button 
-                            onClick={() => {
-                              setEditingUser(user);
-                              setEditName(user.name);
-                              setEditRole(user.role);
-                              setEditStatus(user.status);
-                              setOpenDropdown(null);
-                            }}
-                            className="w-full px-3 py-2 text-slate-700 hover:bg-slate-50 flex items-center space-x-2 transition-colors"
-                          >
-                            <Edit className="w-4 h-4 text-slate-400" />
-                            <span className="font-medium text-sm">Edit Details</span>
-                          </button>
-                        </div>
+                        <Edit className="w-4 h-4" />
+                      </button>
 
-                        <div className="py-1">
-                          <button 
-                            onClick={() => {
-                              setEnrollFpUser(user);
-                              setFpEnrollStep('prompt');
-                              setOpenDropdown(null);
-                            }}
-                            className="w-full px-3 py-2 text-slate-700 hover:bg-slate-50 flex items-center space-x-2 transition-colors"
-                          >
-                            <Fingerprint className="w-4 h-4 text-emerald-600" />
-                            <span className="font-medium text-sm">{user.hasFingerprint ? 'Re-enroll Fingerprint' : 'Enroll Fingerprint'}</span>
-                          </button>
-                          <button 
-                            onClick={() => {
-                              setPinUser(user);
-                              setPinValue("");
-                              setConfirmPinValue("");
-                              setPinError("");
-                              setOpenDropdown(null);
-                            }}
-                            className="w-full px-3 py-2 text-slate-700 hover:bg-slate-50 flex items-center space-x-2 transition-colors"
-                          >
-                            <KeyRound className="w-4 h-4 text-blue-600" />
-                            <span className="font-medium text-sm">{user.hasPin ? 'Change PIN' : 'Set Fallback PIN'}</span>
-                          </button>
-                        </div>
+                      {/* Quick Delete button */}
+                      <button 
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeletingUser(user);
+                          setOpenDropdown(null);
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-red-600 rounded-md hover:bg-red-50 transition-colors"
+                        title="Delete User"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
 
-                        <div className="py-1">
-                          <button 
-                            onClick={() => { toggleStatus(user); setOpenDropdown(null); }} 
-                            className="w-full px-3 py-2 text-slate-700 hover:bg-slate-50 flex items-center space-x-2 transition-colors"
-                          >
-                            {user.status === 'Active' ? (
-                              <>
-                                <UserX className="w-4 h-4 text-amber-500" />
-                                <span className="font-medium text-sm text-amber-700">Deactivate Account</span>
-                              </>
-                            ) : (
-                              <>
-                                <UserCheck className="w-4 h-4 text-emerald-500" />
-                                <span className="font-medium text-sm text-emerald-700">Activate Account</span>
-                              </>
-                            )}
-                          </button>
-                          <button 
-                            onClick={() => { setDeletingUser(user); setOpenDropdown(null); }} 
-                            className="w-full px-3 py-2 text-red-600 hover:bg-red-50 flex items-center space-x-2 transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4 text-red-500" />
-                            <span className="font-medium text-sm">Delete User</span>
-                          </button>
+                      {/* Ellipsis / More Actions button */}
+                      <button 
+                        type="button"
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          setOpenDropdown(openDropdown === user.id ? null : user.id); 
+                        }}
+                        className={cn(
+                          "p-1.5 rounded-md transition-colors border",
+                          openDropdown === user.id 
+                            ? "bg-blue-50 text-blue-700 border-blue-200 shadow-sm" 
+                            : "text-slate-500 hover:text-slate-900 border-transparent hover:border-slate-200 hover:bg-slate-100"
+                        )}
+                        title="More Actions"
+                        aria-haspopup="true"
+                        aria-expanded={openDropdown === user.id}
+                      >
+                        <MoreVertical className="w-4 h-4" />
+                      </button>
+
+                      {/* Fully Functional Dropdown Menu */}
+                      {openDropdown === user.id && (
+                        <div 
+                          onClick={(e) => e.stopPropagation()} 
+                          className={cn(
+                            "absolute right-0 w-60 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 py-1.5 text-left text-xs divide-y divide-slate-100 animate-in fade-in zoom-in-95 duration-100",
+                            index >= 3 ? "bottom-full mb-2" : "top-full mt-2"
+                          )}
+                        >
+                          <div className="px-3.5 py-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                            Actions: {user.name}
+                          </div>
+                          
+                          <div className="py-1">
+                            <button 
+                              type="button"
+                              onClick={() => { setViewingUser(user); setOpenDropdown(null); }}
+                              className="w-full px-3.5 py-2 text-slate-700 hover:bg-slate-50 flex items-center space-x-2.5 transition-colors"
+                            >
+                              <Eye className="w-4 h-4 text-slate-400" />
+                              <span className="font-medium text-xs">View User Profile</span>
+                            </button>
+                            <button 
+                              type="button"
+                              onClick={() => {
+                                setEditingUser(user);
+                                setEditName(user.name);
+                                setEditRole(user.role);
+                                setEditStatus(user.status);
+                                setOpenDropdown(null);
+                              }}
+                              className="w-full px-3.5 py-2 text-slate-700 hover:bg-blue-50 hover:text-blue-700 flex items-center space-x-2.5 transition-colors"
+                            >
+                              <Edit className="w-4 h-4 text-blue-600" />
+                              <span className="font-medium text-xs">Edit Details</span>
+                            </button>
+                          </div>
+
+                          <div className="py-1">
+                            <button 
+                              type="button"
+                              onClick={() => {
+                                setEnrollFpUser(user);
+                                setFpEnrollStep('prompt');
+                                setOpenDropdown(null);
+                              }}
+                              className="w-full px-3.5 py-2 text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 flex items-center space-x-2.5 transition-colors"
+                            >
+                              <Fingerprint className="w-4 h-4 text-emerald-600" />
+                              <span className="font-medium text-xs">{user.hasFingerprint ? 'Re-enroll Fingerprint (DY50)' : 'Enroll Fingerprint (DY50)'}</span>
+                            </button>
+                            <button 
+                              type="button"
+                              onClick={() => {
+                                setPinUser(user);
+                                setPinValue("");
+                                setConfirmPinValue("");
+                                setPinError("");
+                                setOpenDropdown(null);
+                              }}
+                              className="w-full px-3.5 py-2 text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center space-x-2.5 transition-colors"
+                            >
+                              <KeyRound className="w-4 h-4 text-indigo-600" />
+                              <span className="font-medium text-xs">{user.hasPin ? 'Change Keypad PIN' : 'Set Keypad PIN'}</span>
+                            </button>
+                          </div>
+
+                          <div className="py-1">
+                            <button 
+                              type="button"
+                              onClick={() => { toggleStatus(user); setOpenDropdown(null); }} 
+                              className="w-full px-3.5 py-2 text-slate-700 hover:bg-slate-50 flex items-center space-x-2.5 transition-colors"
+                            >
+                              {user.status === 'Active' ? (
+                                <>
+                                  <UserX className="w-4 h-4 text-amber-500" />
+                                  <span className="font-medium text-xs text-amber-700">Deactivate Account</span>
+                                </>
+                              ) : (
+                                <>
+                                  <UserCheck className="w-4 h-4 text-emerald-500" />
+                                  <span className="font-medium text-xs text-emerald-700">Activate Account</span>
+                                </>
+                              )}
+                            </button>
+                            <button 
+                              type="button"
+                              onClick={() => { setDeletingUser(user); setOpenDropdown(null); }} 
+                              className="w-full px-3.5 py-2 text-red-600 hover:bg-red-50 flex items-center space-x-2.5 transition-colors font-medium"
+                            >
+                              <Trash2 className="w-4 h-4 text-red-500" />
+                              <span className="font-semibold text-xs text-red-600">Delete User</span>
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -577,11 +693,12 @@ export default function UsersPage() {
                   <label className="text-xs font-medium text-slate-700">Role Classification</label>
                   <select 
                     value={newRole}
-                    onChange={(e) => setNewRole(e.target.value as "Student" | "Staff")}
+                    onChange={(e) => setNewRole(e.target.value as "Student" | "Staff" | "Admin")}
                     className="w-full px-3 py-2 text-sm border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                   >
                     <option value="Student">Student</option>
                     <option value="Staff">Staff</option>
+                    <option value="Admin">Admin</option>
                   </select>
                 </div>
                 <div className="flex justify-end space-x-2 pt-4">
@@ -670,7 +787,7 @@ export default function UsersPage() {
                     <div className="flex items-center space-x-2.5">
                       <Fingerprint className={cn("w-4 h-4", viewingUser.hasFingerprint ? "text-emerald-600" : "text-slate-400")} />
                       <div>
-                        <p className="text-xs font-semibold text-slate-800">SMF V1.7 Fingerprint</p>
+                        <p className="text-xs font-semibold text-slate-800">DY50 Fingerprint</p>
                         <p className="text-[11px] text-slate-500">Primary biometric verification</p>
                       </div>
                     </div>
@@ -739,11 +856,12 @@ export default function UsersPage() {
                   <label className="text-xs font-medium text-slate-700">Role Classification</label>
                   <select 
                     value={editRole}
-                    onChange={(e) => setEditRole(e.target.value as "Student" | "Staff")}
+                    onChange={(e) => setEditRole(e.target.value as "Student" | "Staff" | "Admin")}
                     className="w-full px-3 py-2 text-sm border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                   >
                     <option value="Student">Student</option>
                     <option value="Staff">Staff</option>
+                    <option value="Admin">Admin</option>
                   </select>
                 </div>
                 <div className="space-y-1.5">
@@ -786,7 +904,7 @@ export default function UsersPage() {
             <CardHeader className="flex flex-row items-center justify-between border-b border-slate-100 pb-4">
               <div className="flex items-center space-x-2">
                 <Fingerprint className="w-5 h-5 text-emerald-600" />
-                <CardTitle className="text-base font-bold">SMF V1.7 Sensor Enrollment</CardTitle>
+                <CardTitle className="text-base font-bold">DY50 Sensor Enrollment</CardTitle>
               </div>
               <button onClick={() => setEnrollFpUser(null)} className="text-slate-400 hover:text-slate-600 p-1">
                 <X className="w-5 h-5" />
@@ -953,13 +1071,38 @@ export default function UsersPage() {
                   type="button" 
                   disabled={isDeleting}
                   onClick={handleDeleteUser}
-                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md shadow-sm"
+                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md shadow-sm flex items-center space-x-1.5"
                 >
-                  {isDeleting ? "Deleting..." : "Confirm Delete"}
+                  {isDeleting && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                  <span>{isDeleting ? "Deleting..." : "Confirm Delete"}</span>
                 </button>
               </div>
             </CardContent>
           </Card>
+        </div>
+      )}
+
+      {/* Floating Notification Toast */}
+      {notification && (
+        <div className={cn(
+          "fixed bottom-6 right-6 z-[100] px-4 py-3 rounded-lg shadow-2xl text-sm font-medium flex items-center space-x-2.5 animate-in fade-in slide-in-from-bottom-3 duration-200 border",
+          notification.type === 'success' 
+            ? "bg-slate-900 text-white border-slate-700" 
+            : "bg-red-600 text-white border-red-700"
+        )}>
+          {notification.type === 'success' ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          ) : (
+            <AlertCircle className="w-4 h-4 text-white shrink-0" />
+          )}
+          <span>{notification.message}</span>
+          <button 
+            type="button"
+            onClick={() => setNotification(null)} 
+            className="ml-2 text-slate-400 hover:text-white p-0.5 rounded transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
     </div>

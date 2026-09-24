@@ -4,7 +4,7 @@ import AppShell from '@/components/layout/AppShell';
 
 export const metadata: Metadata = {
   title: 'AttendX | Smart Biometric Attendance Management',
-  description: 'Reliable attendance system with ESP32-CAM, AS608 optical fingerprint, and PIN fallback.',
+  description: 'Reliable attendance system with ESP32-CAM, DY50 optical fingerprint, and PIN fallback.',
   openGraph: {
     title: 'AttendX',
     description: 'Smart Attendance Management System.',

@@ -44,8 +44,8 @@ export async function GET(req: Request) {
         role: u.role,
         hasFingerprint: !!fp,
         slotNumber: fp?.slotNumber || 0,
-        // Template data (512-byte template hex or mock packet for SMF V1.7)
-        templateData: fp?.templateData || (fp ? `SMF17_FP_${u.id}_SAMPLE_TEMPLATE_HEX_A5F90B2` : null),
+        // Template data (512-byte template hex or mock packet for DY50)
+        templateData: fp?.templateData || (fp ? `DY50_FP_${u.id}_SAMPLE_TEMPLATE_HEX_A5F90B2` : null),
         isEnrolledOnThisTerminal: deviceId && fp?.enrolledTerminals?.includes(deviceId)
       };
     });
@@ -108,7 +108,7 @@ export async function POST(req: Request) {
             fp.slotNumber = idx + 1;
           }
           if (!fp.templateData) {
-            fp.templateData = `SMF17_FP_${fp.userId}_TEMPLATE_HEX_${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+            fp.templateData = `DY50_FP_${fp.userId}_TEMPLATE_HEX_${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
           }
           syncedCount++;
         }
@@ -116,7 +116,7 @@ export async function POST(req: Request) {
 
       // Update terminal metadata
       db.devices[devIndex].enrolledFingerprints = syncedCount;
-      db.devices[devIndex].fingerprintStatus = `SMF V1.7 Ready (${syncedCount} templates loaded)`;
+      db.devices[devIndex].fingerprintStatus = `DY50 Ready (${syncedCount} templates loaded)`;
       db.devices[devIndex].lcdText = [
         '** ATTENDX TERMINAL **',
         `Bio-Sync Complete!`,
@@ -191,7 +191,7 @@ export async function POST(req: Request) {
       });
     }
 
-    // 3. Complete enrollment (sent by ESP32 terminal after reading SMF optical sensor)
+    // 3. Complete enrollment (sent by ESP32 terminal after reading DY50 optical sensor)
     if (action === 'COMPLETE_ENROLLMENT') {
       if (!userId) {
         return NextResponse.json({ error: 'userId is required' }, { status: 400 });

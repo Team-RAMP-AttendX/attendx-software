@@ -21,7 +21,7 @@ Authenticate -> Validate -> Record -> Capture evidence (if PIN) -> Store locally
 
 ## Slide 5 — Hardware
 * ESP32
-* SMF V1.7 Fingerprint Sensor
+* DY50 Fingerprint Sensor
 * 4×4 Keypad
 * 20×4 LCD
 * ESP-CAM

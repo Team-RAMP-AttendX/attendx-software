@@ -15,7 +15,7 @@ A resilient smart attendance system with Fingerprint primary authentication, PIN
 - Filter-aware Excel Export
 
 ## Architecture
-- **Hardware:** ESP32, SMF V1.7, ESP-CAM
+- **Hardware:** ESP32, DY50, ESP-CAM
 - **Backend:** Next.js API Routes (Node.js)
 - **Frontend:** Next.js App Router, Tailwind CSS, Lucide Icons, Recharts
 

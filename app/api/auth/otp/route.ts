@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAuthorizedAdminEmail, saveAdministratorDoc } from '@/lib/db';
+import { isAuthorizedAdminEmail, saveAdministratorDoc, MASTER_ADMIN_EMAIL } from '@/lib/db';
 
 interface ActiveOtpRecord {
   email: string;
@@ -11,17 +11,28 @@ interface ActiveOtpRecord {
 // In-memory active OTP storage
 const activeOtps = new Map<string, ActiveOtpRecord>();
 
+const JSON_HEADERS = { 'Content-Type': 'application/json; charset=utf-8' };
+
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { action, email, otp } = body;
+    let body: any = null;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json(
+        { success: false, message: 'Invalid JSON request payload.' },
+        { status: 200, headers: JSON_HEADERS }
+      );
+    }
+
+    const { action, email, otp } = body || {};
 
     const normalizedEmail = (email || '').trim().toLowerCase();
 
-    if (!normalizedEmail) {
+    if (!normalizedEmail || !normalizedEmail.includes('@')) {
       return NextResponse.json(
         { success: false, message: 'Please provide a valid administrator email address.' },
-        { status: 400 }
+        { status: 200, headers: JSON_HEADERS }
       );
     }
 
@@ -33,9 +44,11 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
           {
             success: false,
-            message: `Access Denied: "${normalizedEmail}" is not a provisioned administrator. Only emails provisioned in the Admin Control panel can receive verification codes. Please contact the Master Administrator (redemptionjonathan1@gmail.com).`
+            notApproved: true,
+            code: 'UNAUTHORIZED_ADMIN',
+            message: `Access Denied: "${normalizedEmail}" is not in our record of approved administrators. Only provisioned administrator emails can receive verification passcodes. Please contact the Master Administrator (${MASTER_ADMIN_EMAIL}) to request access.`
           },
-          { status: 403 }
+          { status: 200, headers: JSON_HEADERS }
         );
       }
 
@@ -61,7 +74,7 @@ export async function POST(req: NextRequest) {
         expiresAt,
         // Provided for rapid evaluation & local fallback verification
         previewCode: code
-      });
+      }, { headers: JSON_HEADERS });
     }
 
     if (action === 'VERIFY_OTP') {
@@ -69,16 +82,16 @@ export async function POST(req: NextRequest) {
 
       if (!record) {
         return NextResponse.json(
-          { success: false, message: 'No active OTP found. Please request a new verification code.' },
-          { status: 400 }
+          { success: false, code: 'NO_ACTIVE_OTP', message: 'No active OTP found. Please request a new verification code.' },
+          { status: 200, headers: JSON_HEADERS }
         );
       }
 
       if (Date.now() > record.expiresAt) {
         activeOtps.delete(normalizedEmail);
         return NextResponse.json(
-          { success: false, message: 'The 5-minute verification code has expired. Please request a new OTP.' },
-          { status: 400 }
+          { success: false, code: 'OTP_EXPIRED', message: 'The 5-minute verification code has expired. Please request a new OTP.' },
+          { status: 200, headers: JSON_HEADERS }
         );
       }
 
@@ -87,13 +100,13 @@ export async function POST(req: NextRequest) {
         if (record.attempts >= 5) {
           activeOtps.delete(normalizedEmail);
           return NextResponse.json(
-            { success: false, message: 'Too many incorrect attempts. Please request a new code.' },
-            { status: 400 }
+            { success: false, code: 'TOO_MANY_ATTEMPTS', message: 'Too many incorrect attempts. Please request a new verification code.' },
+            { status: 200, headers: JSON_HEADERS }
           );
         }
         return NextResponse.json(
-          { success: false, message: `Invalid code. ${5 - record.attempts} attempts remaining.` },
-          { status: 400 }
+          { success: false, code: 'INVALID_CODE', message: `Invalid code. ${5 - record.attempts} attempts remaining.` },
+          { status: 200, headers: JSON_HEADERS }
         );
       }
 
@@ -110,12 +123,21 @@ export async function POST(req: NextRequest) {
           role: 'System Administrator',
           authenticatedAt: new Date().toISOString()
         }
-      });
+      }, { headers: JSON_HEADERS });
     }
 
-    return NextResponse.json({ success: false, message: 'Unknown action' }, { status: 400 });
+    return NextResponse.json(
+      { success: false, message: 'Invalid or unknown action requested.' },
+      { status: 200, headers: JSON_HEADERS }
+    );
   } catch (err: unknown) {
     console.error('OTP handler error:', err);
-    return NextResponse.json({ success: false, message: 'Internal auth error' }, { status: 500 });
+    return NextResponse.json(
+      { 
+        success: false, 
+        message: err instanceof Error ? err.message : 'Authentication service encountered an unexpected error.' 
+      }, 
+      { status: 200, headers: JSON_HEADERS }
+    );
   }
 }

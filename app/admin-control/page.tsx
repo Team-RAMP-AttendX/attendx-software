@@ -63,8 +63,15 @@ export default function AdminControlPage() {
     setLoading(true);
     try {
       const res = await fetch('/api/admin/administrators');
-      const data = await res.json();
-      if (data.success && Array.isArray(data.administrators)) {
+      const text = await res.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(text);
+      } catch {
+        console.warn('Non-JSON response from administrators API');
+      }
+
+      if (data && data.success && Array.isArray(data.administrators)) {
         setAdmins(data.administrators);
       } else {
         // Fallback default
@@ -93,10 +100,17 @@ export default function AdminControlPage() {
   useEffect(() => {
     let active = true;
     fetch('/api/admin/administrators')
-      .then(res => res.json())
+      .then(res => res.text())
+      .then(text => {
+        try {
+          return JSON.parse(text);
+        } catch {
+          return null;
+        }
+      })
       .then(data => {
         if (active) {
-          if (data.success && Array.isArray(data.administrators)) {
+          if (data && data.success && Array.isArray(data.administrators)) {
             setAdmins(data.administrators);
           } else {
             setAdmins([
@@ -148,7 +162,14 @@ export default function AdminControlPage() {
         })
       });
 
-      const data = await res.json();
+      const text = await res.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error('Server returned an unexpected response format.');
+      }
+
       if (!res.ok || !data.success) {
         throw new Error(data.message || 'Failed to provision administrator.');
       }
@@ -183,7 +204,14 @@ export default function AdminControlPage() {
           status: nextStatus
         })
       });
-      const data = await res.json();
+      const text = await res.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error('Unexpected response format.');
+      }
+
       if (data.success) {
         setSuccess(`Status for ${admin.name} updated to ${nextStatus}.`);
         fetchAdministrators();
@@ -209,7 +237,14 @@ export default function AdminControlPage() {
       const res = await fetch(`/api/admin/administrators?id=${encodeURIComponent(admin.id)}`, {
         method: 'DELETE'
       });
-      const data = await res.json();
+      const text = await res.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error('Unexpected response format.');
+      }
+
       if (data.success) {
         setSuccess(data.message);
         fetchAdministrators();

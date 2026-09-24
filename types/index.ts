@@ -21,7 +21,7 @@ export interface Fingerprint {
   registrationDate: string;
   status: 'Active' | 'Inactive';
   slotNumber?: number;
-  templateData?: string; // Hex or base64 representation of SMF V1.7 512-byte template
+  templateData?: string; // Hex or base64 representation of DY50 512-byte template
   enrolledTerminals?: string[]; // Terminal IDs where this template is installed
 }
 
@@ -38,6 +38,10 @@ export interface AttendanceRecord {
   lateDurationMinutes: number;
   syncStatus: SyncStatus;
   createdAt: string; // ISO String
+  offlineBuffered?: boolean;
+  replayedAt?: string;
+  hasImage?: boolean;
+  evidenceStatus?: 'captured' | 'not_captured' | 'upload_dropped';
 }
 
 export interface PINImage {
@@ -46,7 +50,8 @@ export interface PINImage {
   userId: string;
   captureTime: string; // ISO String
   authMode: AuthMode;
-  storageRef: string; // Just a mock path for the demo
+  storageRef: string; // Path or base64 data URI
+  uploadStatus?: 'captured' | 'upload_dropped';
 }
 
 export interface Device {
@@ -56,6 +61,8 @@ export interface Device {
   status: DeviceStatus;
   wifiStatus: 'Connected' | 'Disconnected';
   lastSync: string; // ISO String
+  heartbeatTimedOut?: boolean;
+  secondsSinceLastHeartbeat?: number;
   pendingRecords: number;
   batteryStatus: number; // Percentage
   powerStatus: 'AC' | 'Battery';

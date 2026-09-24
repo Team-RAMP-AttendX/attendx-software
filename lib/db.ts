@@ -31,8 +31,8 @@ const INITIAL_DATA: DatabaseSchema = {
     { id: 'USR003', name: 'David Smith', role: 'Student', status: 'Active', dateRegistered: new Date().toISOString(), totalAttendance: 42, lateOccurrences: 5 }
   ],
   fingerprints: [
-    { id: 'FP001', userId: 'USR001', registrationDate: new Date().toISOString(), status: 'Active', slotNumber: 1, templateData: 'SMF17_FP_USR001_SAMPLE_TEMPLATE_HEX_A5F90B2', enrolledTerminals: ['DEV_TERM_01'] },
-    { id: 'FP002', userId: 'USR002', registrationDate: new Date().toISOString(), status: 'Active', slotNumber: 2, templateData: 'SMF17_FP_USR002_SAMPLE_TEMPLATE_HEX_C8E41A1', enrolledTerminals: ['DEV_TERM_01'] }
+    { id: 'FP001', userId: 'USR001', registrationDate: new Date().toISOString(), status: 'Active', slotNumber: 1, templateData: 'DY50_FP_USR001_SAMPLE_TEMPLATE_HEX_A5F90B2', enrolledTerminals: ['DEV_TERM_01'] },
+    { id: 'FP002', userId: 'USR002', registrationDate: new Date().toISOString(), status: 'Active', slotNumber: 2, templateData: 'DY50_FP_USR002_SAMPLE_TEMPLATE_HEX_C8E41A1', enrolledTerminals: ['DEV_TERM_01'] }
   ],
   attendance: [],
   images: [],
@@ -41,22 +41,22 @@ const INITIAL_DATA: DatabaseSchema = {
       id: 'DEV_TERM_01',
       name: 'Main Campus Terminal A',
       location: 'Engineering Hall East Entrance',
-      status: 'ONLINE',
-      wifiStatus: 'Connected',
-      rssi: -58,
-      lastSync: new Date().toISOString(),
+      status: 'OFFLINE',
+      wifiStatus: 'Disconnected',
+      rssi: 0,
+      lastSync: new Date(Date.now() - 3600000).toISOString(),
       pendingRecords: 0,
-      batteryStatus: 92,
+      batteryStatus: 85,
       powerStatus: 'AC',
       ipAddress: '192.168.1.102',
       macAddress: '24:0A:C4:B8:3A:1E',
       firmwareVersion: 'AttendX-FW v2.4.1',
       esp32Heap: '296 KB Free / 520 KB Total',
-      fingerprintStatus: 'SMF V1.7 Ready (UART 57600)',
+      fingerprintStatus: 'DY50 Ready (UART 57600)',
       cameraStatus: 'ESP-CAM Standby (SVGA OV2640)',
       keypadStatus: '4x4 Matrix Active',
       lcdStatus: '16x2 / 20x4 I2C LCD Ready (0x27)',
-      lcdText: ['** ATTENDX TERMINAL **', 'Ready for Scan...', 'Time: 09:15 AM [SYNC]', 'Net: CONNECTED | Bat:92%'],
+      lcdText: ['** ATTENDX TERMINAL **', 'Awaiting Hardware...', 'Hardware Inactive', 'Net: DISCONNECTED'],
       voltage: '4.18V (Li-ion)',
       enrolledFingerprints: 2
     }
@@ -207,6 +207,23 @@ export async function writeDb(data: DatabaseSchema): Promise<void> {
  */
 export async function saveUserDoc(user: User): Promise<void> {
   await setDoc(doc(firestore, 'users', user.id), user, { merge: true });
+}
+
+/**
+ * Permanently deletes a user document and associated fingerprints from Firestore.
+ */
+export async function deleteUserDoc(userId: string): Promise<void> {
+  try {
+    await deleteDoc(doc(firestore, 'users', userId));
+    const fpSnap = await getDocs(collection(firestore, 'fingerprints'));
+    const userFpDocs = fpSnap.docs.filter(d => d.data().userId === userId);
+    for (const d of userFpDocs) {
+      await deleteDoc(doc(firestore, 'fingerprints', d.id));
+    }
+  } catch (err) {
+    console.error(`Failed to delete user doc ${userId}:`, err);
+    throw err;
+  }
 }
 
 /**
@@ -399,7 +416,7 @@ export async function recordCommandResult(report: CommandResultReport): Promise<
           registrationDate: now,
           status: 'Active',
           slotNumber: report.slotNumber,
-          templateData: `SMF17_FP_${report.userId}_SLOT_${report.slotNumber}`,
+          templateData: `DY50_FP_${report.userId}_SLOT_${report.slotNumber}`,
           enrolledTerminals: [cleanDeviceId]
         });
       }
