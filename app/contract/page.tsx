@@ -132,7 +132,7 @@ export default function ContractBlueprintPage() {
             </div>
             <div>
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Evidence Capture</p>
-              <p className="text-sm font-bold text-slate-800">ESP-CAM (OV2640)</p>
+              <p className="text-sm font-bold text-slate-800">ESP32-S3-CAM (OV2640)</p>
             </div>
           </CardContent>
         </Card>

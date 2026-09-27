@@ -32,12 +32,12 @@ const navigation = [
   { name: 'Firmware Blueprint', href: '/contract', icon: FileCode },
 ];
 
-export function Sidebar() {
+export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
-  const { isSimulationMode } = useSystemMode();
+  const { isSimulationMode, toggleSimulationMode } = useSystemMode();
 
   return (
-    <div className="flex h-full w-64 flex-col bg-slate-900 border-r border-slate-800">
+    <div className="flex h-full w-64 flex-col bg-slate-900 border-r border-slate-800 flex-shrink-0">
       {/* Brand Header */}
       <div className="flex h-16 items-center justify-between px-6 border-b border-slate-800">
         <div className="flex items-center space-x-2">
@@ -77,6 +77,7 @@ export function Sidebar() {
               <Link
                 key={item.name}
                 href={item.href}
+                onClick={() => onNavigate?.()}
                 className={cn(
                   isActive
                     ? 'bg-indigo-600 text-white'
@@ -99,7 +100,7 @@ export function Sidebar() {
       </div>
 
       {/* Mode Status Footer */}
-      <div className="p-4 border-t border-slate-800 bg-slate-950/60">
+      <div className="p-4 border-t border-slate-800 bg-slate-950/60 flex flex-col gap-2">
         {isSimulationMode ? (
           <div>
             <div className="flex items-center space-x-2 text-xs font-semibold text-purple-400">
@@ -124,6 +125,15 @@ export function Sidebar() {
             </p>
           </div>
         )}
+        
+        {/* Mobile / Universal Toggle Button */}
+        <button
+          type="button"
+          onClick={toggleSimulationMode}
+          className="md:hidden mt-2 w-full py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 font-semibold border border-slate-700 transition-colors"
+        >
+          Switch to {isSimulationMode ? 'Live DB' : 'Simulation'}
+        </button>
       </div>
     </div>
   );

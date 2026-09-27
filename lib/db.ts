@@ -10,12 +10,12 @@ import {
 import { firestore } from './firebase';
 import { DatabaseSchema, User, Fingerprint, AttendanceRecord, PINImage, Device, Administrator, TerminalCommand, CommandResultReport } from '../types';
 
-export const MASTER_ADMIN_EMAIL = 'redemptionjonathan1@gmail.com';
+export const MASTER_ADMIN_EMAIL = process.env.NEXT_PUBLIC_MASTER_ADMIN_EMAIL || 'redemptionjonathan1@gmail.com';
 
 export const DEFAULT_MASTER_ADMIN: Administrator = {
   id: 'admin_master',
-  email: 'redemptionjonathan1@gmail.com',
-  name: 'Jonathan Redemption',
+  email: MASTER_ADMIN_EMAIL,
+  name: 'System Administrator',
   role: 'Master Administrator',
   status: 'Active',
   isMaster: true,
@@ -89,9 +89,9 @@ const INITIAL_DATA: DatabaseSchema = {
       firmwareVersion: 'AttendX-FW v2.4.1',
       esp32Heap: '296 KB Free / 520 KB Total',
       fingerprintStatus: 'DY50 Ready (UART 57600)',
-      cameraStatus: 'ESP-CAM Standby (SVGA OV2640)',
+      cameraStatus: 'ESP32-S3-CAM Standby (SVGA OV2640)',
       keypadStatus: '4x4 Matrix Active',
-      lcdStatus: '16x2 / 20x4 I2C LCD Ready (0x27)',
+      lcdStatus: '20x4 / 20x4 I2C LCD Ready (0x27)',
       lcdText: ['** ATTENDX TERMINAL **', 'Ready for Scan...', 'System: ONLINE', 'Net: CONNECTED'],
       voltage: '4.18V (Li-ion)',
       enrolledFingerprints: 2

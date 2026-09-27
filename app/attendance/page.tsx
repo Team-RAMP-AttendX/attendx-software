@@ -26,7 +26,7 @@ export default function AttendanceLiveFeed() {
       }
 
       fetchFeed()
-      const interval = setInterval(fetchFeed, 3000)
+      const interval = setInterval(fetchFeed, 10000)
       return () => clearInterval(interval)
     }
   }, [isSimulationMode])

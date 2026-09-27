@@ -4,7 +4,7 @@
 Fingerprint recognition fails frequently. Network outages interrupt centralized synchronization.
 
 ## Solution
-A resilient smart attendance system with Fingerprint primary authentication, PIN fallback (with ESP-CAM image evidence), offline local storage, and automatic synchronization.
+A resilient smart attendance system with Fingerprint primary authentication, PIN fallback (with ESP32-S3-CAM image evidence), offline local storage, and automatic synchronization.
 
 ## Features
 - Fingerprint & PIN Authentication
@@ -15,7 +15,7 @@ A resilient smart attendance system with Fingerprint primary authentication, PIN
 - Filter-aware Excel Export
 
 ## Architecture
-- **Hardware:** ESP32, DY50, ESP-CAM
+- **Hardware:** ESP32, DY50, ESP32-S3-CAM
 - **Backend:** Next.js API Routes (Node.js)
 - **Frontend:** Next.js App Router, Tailwind CSS, Lucide Icons, Recharts
 

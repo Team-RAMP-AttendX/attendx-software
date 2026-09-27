@@ -32,7 +32,7 @@ export async function GET() {
         firmwareVersion: device.firmwareVersion || 'AttendX-FW v2.4.1',
         esp32Heap: device.esp32Heap || '284 KB Free / 520 KB Total',
         fingerprintStatus: device.fingerprintStatus || 'DY50 Ready (UART 57600)',
-        cameraStatus: device.cameraStatus || 'ESP-CAM Standby (SVGA OV2640)',
+        cameraStatus: device.cameraStatus || 'ESP32-S3-CAM Standby (SVGA OV2640)',
         keypadStatus: device.keypadStatus || '4x4 Matrix Active (50ms debounce)',
         lcdStatus: device.lcdStatus || '20x4 I2C LCD Ready (0x27)',
         lcdText: device.lcdText || [
@@ -91,7 +91,7 @@ export async function POST(req: Request) {
       firmwareVersion: 'AttendX-FW v2.4.1',
       esp32Heap: '292 KB Free / 520 KB Total',
       fingerprintStatus: 'DY50 Ready (UART 57600)',
-      cameraStatus: 'ESP-CAM Standby (SVGA OV2640)',
+      cameraStatus: 'ESP32-S3-CAM Standby (SVGA OV2640)',
       keypadStatus: '4x4 Matrix Active (50ms debounce)',
       lcdStatus: '20x4 I2C LCD Ready (0x27)',
       lcdText: [

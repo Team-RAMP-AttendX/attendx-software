@@ -10,7 +10,7 @@
 "Watch as a student checks in using their fingerprint. It's instantly validated and appears on our central dashboard as 'Present' and 'On Time'."
 
 **1:45–2:15: PIN Fallback + Image**
-"What if the fingerprint fails? AttendX allows a PIN fallback. To prevent proxy attendance, our ESP-CAM securely snaps a photo when the PIN is used. The dashboard updates, and the admin can view the image evidence."
+"What if the fingerprint fails? AttendX allows a PIN fallback. To prevent proxy attendance, our ESP32-S3-CAM securely snaps a photo when the PIN is used. The dashboard updates, and the admin can view the image evidence."
 
 **2:15–2:45: Late Attendance**
 "The system automatically tracks time. This check-in happened after 9:00 AM, so the dashboard instantly flags the user as 'Late' and calculates the delay duration."

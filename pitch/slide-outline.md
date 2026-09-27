@@ -14,7 +14,7 @@ Network outages can interrupt centralized synchronization.
 Administrators need clear attendance visibility.
 
 ## Slide 3 — The Solution
-Fingerprint + PIN fallback + ESP-CAM evidence + Offline storage + Automatic synchronization + Central dashboard.
+Fingerprint + PIN fallback + ESP32-S3-CAM evidence + Offline storage + Automatic synchronization + Central dashboard.
 
 ## Slide 4 — How It Works
 Authenticate -> Validate -> Record -> Capture evidence (if PIN) -> Store locally (if offline) -> Synchronize -> Dashboard
@@ -24,7 +24,7 @@ Authenticate -> Validate -> Record -> Capture evidence (if PIN) -> Store locally
 * DY50 Fingerprint Sensor
 * 4×4 Keypad
 * 20×4 LCD
-* ESP-CAM
+* ESP32-S3-CAM
 * Backup Power
 
 ## Slide 6 — Software Architecture

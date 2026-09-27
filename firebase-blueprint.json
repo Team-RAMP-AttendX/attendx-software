@@ -81,7 +81,7 @@
     },
     "PINImage": {
       "title": "PINImage",
-      "description": "ESP-CAM photo evidence captured during PIN entry",
+      "description": "ESP32-S3-CAM photo evidence captured during PIN entry",
       "type": "object",
       "properties": {
         "id": { "type": "string" },

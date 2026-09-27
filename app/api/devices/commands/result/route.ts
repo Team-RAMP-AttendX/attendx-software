@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { recordCommandResult, readDb, writeDb } from '@/lib/db';
+import { recordCommandResult, readDb, saveDeviceDoc } from '@/lib/db';
 import { CommandResultReport } from '@/types';
 
 /**
@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
           'Check Terminal'
         ];
       }
-      await writeDb(db);
+      await saveDeviceDoc(db.devices[devIndex]);
     }
 
     return NextResponse.json({

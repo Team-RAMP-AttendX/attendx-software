@@ -76,7 +76,7 @@ export function generateContractPdf(): jsPDF {
       ['Biometrics', 'DY50 Optical Sensor', 'TX=GPIO 16, RX=GPIO 17', 'UART (57600 baud)', '500 DPI optical scan; 300 EEPROM template capacity.'],
       ['Keypad', '4x4 Membrane Matrix', 'Rows: 13,12,14,27 | Cols: 26,25,33,32', 'GPIO Matrix (Active Low)', 'Debounce 50ms; digits 0-9 for ID, A/B/C/D for role flags.'],
       ['Display', '20x4 I2C Character LCD', 'SDA=GPIO 21, SCL=GPIO 22', 'I2C (0x27 / 100kHz)', 'Real-time state display, welcome/farewell messages, clock.'],
-      ['Camera', 'ESP-CAM (OV2640)', 'TX=GPIO 1, RX=GPIO 3 / WiFi', 'UART / HTTP multipart', 'Captures SVGA JPEG snapshot on PIN keypad entry.'],
+      ['Camera', 'ESP32-S3-CAM (OV2640)', 'TX=GPIO 1, RX=GPIO 3 / WiFi', 'UART / HTTP multipart', 'Captures SVGA JPEG snapshot on PIN keypad entry.'],
       ['Audio/Visual', 'Active Buzzer & Dual LEDs', 'Buzzer=GPIO 4, Green=18, Red=19', 'Digital Output', 'Short beep on scan; continuous tone on unmapped user.']
     ],
     headStyles: { fillColor: accentColor, fontSize: 8, fontStyle: 'bold' },

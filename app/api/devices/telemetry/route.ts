@@ -31,7 +31,7 @@ export async function POST(req: Request) {
     const lcdText = body.lcdText || body.lcd_text;
     const firmwareVersion = body.firmwareVersion || body.firmware_version || 'AttendX-FW v2.4.1';
     const fingerprintStatus = body.fingerprintStatus || body.fingerprint_status || 'DY50 Ready (UART 57600)';
-    const cameraStatus = body.cameraStatus || body.camera_status || 'ESP-CAM Standby (SVGA OV2640)';
+    const cameraStatus = body.cameraStatus || body.camera_status || 'ESP32-S3-CAM Standby (SVGA OV2640)';
     const keypadStatus = body.keypadStatus || body.keypad_status || '4x4 Matrix Active (50ms debounce)';
     const lcdStatus = body.lcdStatus || body.lcd_status || '20x4 I2C LCD Ready (0x27)';
     const rawMax = body.maxSlots ?? body.max_slots;
@@ -86,13 +86,15 @@ export async function POST(req: Request) {
     // Retrieve pending commands for this terminal (§2.1 of Contract)
     const pendingCommands = await getPendingCommandsForDevice(cleanId);
     
-    // Format command payload for ESP32 firmware
+    // Format command payload for ESP32-S3-CAM firmware
+    // Include ALL relevant fields so firmware can execute without ambiguity
     const formattedCommands = pendingCommands.slice(0, 3).map(cmd => {
       if (cmd.type === 'ENROLL_FINGERPRINT') {
         return {
           commandId: cmd.commandId,
           type: 'ENROLL_FINGERPRINT' as const,
-          userId: cmd.userId
+          userId: cmd.userId,
+          slotNumber: cmd.slotNumber  // Required: DY50 EEPROM slot for template storage
         };
       } else if (cmd.type === 'DELETE_FINGERPRINT') {
         return {
@@ -107,6 +109,16 @@ export async function POST(req: Request) {
       };
     });
 
+    // Adaptive heartbeat: poll faster when commands are pending so dashboard actions feel instant
+    const nextHeartbeatSeconds = formattedCommands.length > 0 ? 5 : 30;
+
+    // Resolve device config for firmware
+    const deviceConfig = {
+      pinFallbackEnabled: existingDev?.pinFallbackEnabled ?? true,
+      cameraEvidenceEnabled: existingDev?.cameraEvidenceEnabled ?? true,
+      heartbeatIntervalSeconds: existingDev?.heartbeatIntervalSeconds ?? 30
+    };
+
     return NextResponse.json({
       ok: true,
       success: true,
@@ -114,7 +126,8 @@ export async function POST(req: Request) {
       serverTime: now,
       terminalStatus: 'ACKNOWLEDGED',
       activeEnrolledFingerprints: db.fingerprints.filter(f => f.status === 'Active').length,
-      nextHeartbeatIntervalSeconds: 30,
+      nextHeartbeatIntervalSeconds: nextHeartbeatSeconds,
+      config: deviceConfig,
       commands: formattedCommands
     });
   } catch (err) {

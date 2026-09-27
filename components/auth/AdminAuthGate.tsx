@@ -2,14 +2,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { useSystemMode } from '@/context/SystemModeContext';
-import { 
-  ShieldCheck, 
-  KeyRound, 
-  Mail, 
-  ArrowRight, 
-  RefreshCw, 
-  Lock, 
-  Sparkles, 
+import {
+  ShieldCheck,
+  KeyRound,
+  Mail,
+  ArrowRight,
+  RefreshCw,
+  Lock,
+  Sparkles,
   HelpCircle,
   Clock,
   Terminal,
@@ -24,7 +24,8 @@ import emailjs from '@emailjs/browser';
 export default function AdminAuthGate({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, login, setSimulationMode, isHydrated } = useSystemMode();
 
-  const [email, setEmail] = useState('redemptionjonathan1@gmail.com');
+  const masterEmail = process.env.NEXT_PUBLIC_MASTER_ADMIN_EMAIL || 'admin@example.com';
+  const [email, setEmail] = useState(masterEmail);
   const [step, setStep] = useState<'EMAIL' | 'OTP'>('EMAIL');
   const [otpInput, setOtpInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -108,7 +109,7 @@ export default function AdminAuthGate({ children }: { children: React.ReactNode 
       // 1. Call server to generate and record 5-minute OTP
       const res = await fetch('/api/auth/otp', {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json'
         },
@@ -124,7 +125,7 @@ export default function AdminAuthGate({ children }: { children: React.ReactNode 
         const isForbiddenOrDenied = res.status === 403 || res.status === 401 || /forbidden|unauthorized|denied|access/i.test(rawText);
         if (isForbiddenOrDenied) {
           throw new Error(
-            `Access Denied: "${email.trim()}" is not in our record of approved administrators. Only provisioned administrator emails can receive verification passcodes. Please contact the Master Administrator (redemptionjonathan1@gmail.com).`
+            `Access Denied: "${email.trim()}" is not in our record of approved administrators. Only provisioned administrator emails can receive verification passcodes. Please contact the Master Administrator (${masterEmail}).`
           );
         }
         throw new Error(
@@ -214,7 +215,7 @@ export default function AdminAuthGate({ children }: { children: React.ReactNode 
     try {
       const res = await fetch('/api/auth/otp', {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json'
         },
@@ -244,7 +245,7 @@ export default function AdminAuthGate({ children }: { children: React.ReactNode 
 
   const handleLaunchSimulationDirectly = () => {
     setSimulationMode(true);
-    login(email, 'simulated_guest_session');
+    login('simulation_guest@attendx.local', 'simulated_guest_session');
   };
 
   // While hydrating on the client, render identical unauthenticated gate to ensure SSR HTML matches 100%
@@ -318,8 +319,8 @@ export default function AdminAuthGate({ children }: { children: React.ReactNode 
                 <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <div className="font-semibold text-red-300 text-[13px] mb-0.5">
-                    {errorMsg.toLowerCase().includes('not in our record') || errorMsg.toLowerCase().includes('access denied') 
-                      ? 'Access Denied: Unapproved Administrator' 
+                    {errorMsg.toLowerCase().includes('not in our record') || errorMsg.toLowerCase().includes('access denied')
+                      ? 'Access Denied: Unapproved Administrator'
                       : 'Security Notification'}
                   </div>
                   <div className="text-red-200/90 leading-relaxed text-xs">
@@ -332,12 +333,12 @@ export default function AdminAuthGate({ children }: { children: React.ReactNode 
                   <button
                     type="button"
                     onClick={() => {
-                      setEmail('redemptionjonathan1@gmail.com');
+                      setEmail(masterEmail);
                       setErrorMsg(null);
                     }}
                     className="text-indigo-300 hover:text-white underline underline-offset-2 transition-colors font-medium"
                   >
-                    Use Master Admin (redemptionjonathan1@gmail.com)
+                    Use Master Admin ({masterEmail})
                   </button>
                   <span className="text-red-500">•</span>
                   <button
@@ -378,7 +379,7 @@ export default function AdminAuthGate({ children }: { children: React.ReactNode 
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="redemptionjonathan1@gmail.com"
+                    placeholder={masterEmail}
                     className="w-full pl-10 pr-4 py-2.5 bg-slate-950/70 border border-slate-700/80 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-mono"
                   />
                 </div>
@@ -388,7 +389,7 @@ export default function AdminAuthGate({ children }: { children: React.ReactNode 
                     <span>Security Policy:</span>
                   </p>
                   <p>
-                    Only emails provisioned via <strong className="text-white">Admin Control</strong> (default: <span className="text-indigo-300 font-mono">redemptionjonathan1@gmail.com</span>) can receive one-time passcodes.
+                    Only emails provisioned via <strong className="text-white">Admin Control</strong> (default: <span className="text-indigo-300 font-mono">{masterEmail}</span>) can receive one-time passcodes.
                   </p>
                 </div>
               </div>
@@ -578,11 +579,11 @@ export default function AdminAuthGate({ children }: { children: React.ReactNode 
           </div>
           <div className="flex items-center space-x-1.5">
             <Camera className="w-3.5 h-3.5 text-indigo-400" />
-            <span>ESP-CAM Evidence</span>
+            <span>ESP32-S3-CAM Evidence</span>
           </div>
           <div className="flex items-center space-x-1.5">
             <Terminal className="w-3.5 h-3.5 text-indigo-400" />
-            <span>16x2 LCD + 4x4 Keypad</span>
+            <span>20x4 LCD + 4x4 Keypad</span>
           </div>
         </div>
       </div>

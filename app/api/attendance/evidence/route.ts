@@ -157,7 +157,7 @@ export async function POST(req: Request) {
       userId: user?.id || cleanUserId,
       userName: user?.name || 'Verified User',
       image: newImage,
-      message: 'ESP-CAM evidence photo received and verified successfully.'
+      message: 'ESP32-S3-CAM evidence photo received and verified successfully.'
     }, { status: 201 });
   } catch (err) {
     console.error('Error storing evidence image:', err);

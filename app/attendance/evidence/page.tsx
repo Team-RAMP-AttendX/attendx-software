@@ -110,7 +110,7 @@ export default function EvidencePage() {
           <p className="text-sm text-slate-500 mt-1 max-w-sm mx-auto">
             {isSimulationMode 
               ? 'Trigger a simulated PIN check-in to generate mock camera captures.' 
-              : 'When users enter their PIN backup on a connected ESP32 terminal, the ESP-CAM will snapshot their face and upload the image here.'}
+              : 'When users enter their PIN backup on a connected ESP32 terminal, the ESP32-S3-CAM will snapshot their face and upload the image here.'}
           </p>
         </Card>
       ) : (
@@ -128,7 +128,7 @@ export default function EvidencePage() {
                   {isDropped ? (
                     <div className="p-4 text-center text-slate-400 space-y-1">
                       <WifiOff className="w-8 h-8 mx-auto text-amber-400 mb-2" />
-                      <p className="text-xs font-bold text-amber-300">ESP-CAM Frame Dropped</p>
+                      <p className="text-xs font-bold text-amber-300">ESP32-S3-CAM Frame Dropped</p>
                       <p className="text-[10px] text-slate-400 leading-tight">PIN accepted without photo (Wi-Fi bandwidth saving mode)</p>
                     </div>
                   ) : (
@@ -174,7 +174,7 @@ export default function EvidencePage() {
               <div>
                 <h3 className="text-sm font-bold text-white flex items-center">
                   <ShieldCheck className="w-4 h-4 text-emerald-400 mr-2" />
-                  ESP-CAM Biometric Identity Verification
+                  ESP32-S3-CAM Biometric Identity Verification
                 </h3>
                 <p className="text-xs text-slate-400 font-mono">
                   {selectedImage.userId} • {selectedImage.userName} • {selectedImage.deviceId}

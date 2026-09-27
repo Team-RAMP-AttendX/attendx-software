@@ -1,20 +1,60 @@
 "use client"
 import React, { useEffect, useState, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { 
-  Users, UserCheck, UserX, Clock, Fingerprint, Hash, 
+import {
+  Users, UserCheck, UserX, Clock, Fingerprint, Hash,
   HardDrive, Camera, CameraOff, Sparkles, Activity, CheckCircle2,
   LogIn, LogOut, Building2
 } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, LineChart, Line, CartesianGrid, XAxis, YAxis } from 'recharts'
 import { cn } from '@/lib/utils'
 import { useSystemMode } from '@/context/SystemModeContext'
+import type { AttendanceRecord } from '@/types'
+
+interface DashboardMetrics {
+  totalUsers: number
+  totalStudents?: number
+  totalStaff?: number
+  presentToday: number
+  absentToday: number
+  lateToday: number
+  onTimeToday?: number
+  currentlyPresent: number
+  checkedOutToday: number
+}
+
+interface DashboardAnalytics {
+  fingerprint: number
+  pin: number
+  attendanceRate?: number
+  lateRate?: number
+}
+
+interface TrendPoint {
+  name: string
+  present: number
+}
+
+interface DashboardData {
+  metrics: DashboardMetrics
+  analytics: DashboardAnalytics
+  trend: TrendPoint[]
+  feed?: FeedRecord[]
+}
+
+interface FeedRecord extends AttendanceRecord {
+  user?: { name: string; role: string }
+  hasImage?: boolean
+  isCheckedOut?: boolean
+  lastEventType?: string
+  lastEventTime?: string
+}
 
 export default function DashboardPage() {
   const { isSimulationMode, simState, triggerSimulatedCheckIn } = useSystemMode()
 
-  const [realData, setRealData] = useState<any>(null)
-  const [realFeed, setRealFeed] = useState<any[]>([])
+  const [realData, setRealData] = useState<DashboardData | null>(null)
+  const [realFeed, setRealFeed] = useState<FeedRecord[]>([])
   const [loading, setLoading] = useState(true)
 
   // Live polling for dashboard data & feed
@@ -43,12 +83,12 @@ export default function DashboardPage() {
 
     fetchDashboardData()
 
-    // 3-second live polling interval so ESP32 terminal scans reflect immediately
+    // 10-second live polling interval — balances real-time responsiveness with Firestore cost
     const interval = setInterval(() => {
       if (active && !isSimulationMode) {
         fetchDashboardData()
       }
-    }, 3000)
+    }, 10000)
 
     return () => {
       active = false
@@ -137,7 +177,7 @@ export default function DashboardPage() {
       <div className="space-y-6 animate-pulse">
         <div className="h-8 w-64 bg-slate-200 rounded"></div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          {[1,2,3,4,5].map(i => <div key={i} className="h-28 bg-slate-200 rounded-lg"></div>)}
+          {[1, 2, 3, 4, 5].map(i => <div key={i} className="h-28 bg-slate-200 rounded-lg"></div>)}
         </div>
       </div>
     )
@@ -164,8 +204,8 @@ export default function DashboardPage() {
             Dashboard Overview
           </h2>
           <p className="text-xs text-slate-500 mt-1">
-            {isSimulationMode 
-              ? 'Simulation Mode: Dynamic in-memory stream without touching database.' 
+            {isSimulationMode
+              ? 'Simulation Mode: Dynamic in-memory stream without touching database.'
               : "Live Firestore: Polling live events from ESP32 optical terminals and physical sensors."}
           </p>
         </div>
@@ -198,16 +238,16 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard title="Total Users" value={metrics.totalUsers} icon={<Users className="w-4 h-4 text-slate-400" />} />
         <StatCard title="Present Today" value={metrics.presentToday} icon={<UserCheck className="w-4 h-4 text-emerald-500" />} />
-        <StatCard 
-          title="In Building" 
-          value={metrics.currentlyPresent ?? (metrics.presentToday - (metrics.checkedOutToday || 0))} 
-          icon={<Building2 className="w-4 h-4 text-blue-500" />} 
+        <StatCard
+          title="In Building"
+          value={metrics.currentlyPresent ?? (metrics.presentToday - (metrics.checkedOutToday || 0))}
+          icon={<Building2 className="w-4 h-4 text-blue-500" />}
           highlight="active"
         />
-        <StatCard 
-          title="Checked Out" 
-          value={metrics.checkedOutToday || 0} 
-          icon={<LogOut className="w-4 h-4 text-indigo-500" />} 
+        <StatCard
+          title="Checked Out"
+          value={metrics.checkedOutToday || 0}
+          icon={<LogOut className="w-4 h-4 text-indigo-500" />}
         />
         <StatCard title="Late Today" value={metrics.lateToday} icon={<Clock className="w-4 h-4 text-amber-500" />} />
       </div>
@@ -282,7 +322,7 @@ export default function DashboardPage() {
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} dy={10} />
                   <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} />
-                  <RechartsTooltip 
+                  <RechartsTooltip
                     contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                     cursor={{ stroke: '#cbd5e1', strokeWidth: 1, strokeDasharray: '4 4' }}
                   />
@@ -321,7 +361,7 @@ export default function DashboardPage() {
                     <div>
                       <div className="flex items-center space-x-2">
                         <p className="text-xs font-semibold text-slate-900">
-                          {record.user?.name || record.userId} 
+                          {record.user?.name || record.userId}
                           <span className="text-[11px] text-slate-500 font-normal ml-2">{record.user?.role || 'User'}</span>
                         </p>
                         {isCheckedOut ? (
@@ -347,7 +387,7 @@ export default function DashboardPage() {
                             <span className="text-slate-300">•</span>
                             <span className="text-[11px] text-slate-600 flex items-center font-mono">
                               <LogOut className="w-3 h-3 mr-1 text-blue-600" />
-                              Out: {new Date(record.checkOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              Out: {new Date(record.checkOutTime as string).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>
                           </>
                         )}
@@ -376,14 +416,14 @@ export default function DashboardPage() {
                             <>
                               <span className="text-slate-300">•</span>
                               <span className="text-[10px] font-medium text-indigo-600 flex items-center">
-                                <Camera className="w-3 h-3 mr-1"/> Evidence
+                                <Camera className="w-3 h-3 mr-1" /> Evidence
                               </span>
                             </>
                           ) : (
                             <>
                               <span className="text-slate-300">•</span>
                               <span className="text-[10px] font-normal text-slate-400 flex items-center" title="Photo dropped mid-upload during outage; PIN verified">
-                                <CameraOff className="w-2.5 h-2.5 mr-1 text-slate-400"/> No Photo
+                                <CameraOff className="w-2.5 h-2.5 mr-1 text-slate-400" /> No Photo
                               </span>
                             </>
                           )

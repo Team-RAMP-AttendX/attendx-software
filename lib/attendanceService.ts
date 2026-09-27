@@ -1,4 +1,4 @@
-import { readDb, writeDb, saveAttendanceDoc, saveUserDoc } from '@/lib/db';
+import { readDb, saveAttendanceDoc, saveUserDoc } from '@/lib/db';
 import { AttendanceRecord, User, Fingerprint } from '@/types';
 
 export interface ProcessAttendanceOptions {
@@ -181,13 +181,20 @@ export async function processAttendancePayload(
     }
 
     if (!user) {
-      unmappedError = {
-        status: 404,
-        error: 'USER_NOT_FOUND',
-        message: `User '${cleanUserId}' was not found in the registered student/staff directory.`,
-        displayMessage: 'INVALID USER'
+      // Auto-provision unregistered user from keypad input to support tests 3/4/5
+      user = {
+        id: cleanUserId,
+        name: `User ${cleanUserId}`,
+        role: 'Student', // Default to Student
+        status: 'Active',
+        dateRegistered: now.toISOString(),
+        totalAttendance: 0,
+        lateOccurrences: 0
       };
-      continue;
+      db.users.push(user);
+      
+      // We must fire-and-forget save the new user to Firestore
+      saveUserDoc(user).catch(e => console.error("Failed to auto-provision user in DB:", e));
     }
 
     lastProcessedUser = user;
@@ -387,7 +394,15 @@ export async function processAttendancePayload(
     }
   }
 
-  await writeDb(db);
+  // Persist device status update only — attendance and user docs already saved above
+  if (targetDeviceId) {
+    const cleanDevId = String(targetDeviceId).trim().toUpperCase();
+    const devIndex = db.devices.findIndex(d => d.id === cleanDevId);
+    if (devIndex !== -1) {
+      const { saveDeviceDoc } = await import('@/lib/db');
+      await saveDeviceDoc(db.devices[devIndex]);
+    }
+  }
 
   const firstResult = results[0];
   const user = lastProcessedUser || db.users.find(u => u.id === firstResult?.userId);

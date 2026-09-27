@@ -496,7 +496,7 @@ export default function UsersPage() {
             setUserIdError("");
             setIsModalOpen(true);
           }}
-          className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors bg-blue-600 text-white hover:bg-blue-700 h-10 px-4 py-2 shadow-sm"
+          className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors bg-blue-600 text-white hover:bg-blue-700 h-10 px-4 py-2 shadow-sm w-full sm:w-auto mt-2 sm:mt-0"
         >
           <Plus className="w-4 h-4 mr-2" /> Add User
         </button>
@@ -1037,7 +1037,7 @@ export default function UsersPage() {
                       <Hash className={cn("w-4 h-4", viewingUser.hasPin ? "text-blue-600" : "text-slate-400")} />
                       <div>
                         <p className="text-xs font-semibold text-slate-800">Keypad Backup PIN</p>
-                        <p className="text-[11px] text-slate-500">Triggers ESP-CAM photo capture</p>
+                        <p className="text-[11px] text-slate-500">Triggers ESP32-S3-CAM photo capture</p>
                       </div>
                     </div>
                     <span className={cn(

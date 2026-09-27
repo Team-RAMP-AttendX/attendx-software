@@ -2,9 +2,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { 
-  HardDrive, Wifi, WifiOff, Battery, Plug, Activity, Clock, 
-  Plus, Trash2, RefreshCw, Cpu, Camera, Terminal, CheckCircle2, 
+import {
+  HardDrive, Wifi, WifiOff, Battery, Plug, Activity, Clock,
+  Plus, Trash2, RefreshCw, Cpu, Camera, Terminal, CheckCircle2,
   AlertTriangle, X, Radio, Eye, Zap, ShieldCheck, FileCode,
   Fingerprint, BookOpen, Send, Check, Layers, Download, Settings
 } from 'lucide-react'
@@ -293,7 +293,7 @@ export default function DevicesPage() {
           firmwareVersion: 'AttendX-FW v2.4.1',
           esp32Heap: '290 KB Free / 520 KB Total',
           fingerprintStatus: 'DY50 Ready (UART 57600)',
-          cameraStatus: 'ESP-CAM Standby (SVGA OV2640)',
+          cameraStatus: 'ESP32-S3-CAM Standby (SVGA OV2640)',
           keypadStatus: '4x4 Matrix Active (50ms debounce)',
           lcdStatus: '20x4 I2C LCD Ready (0x27)',
           lcdText: [
@@ -451,32 +451,24 @@ export default function DevicesPage() {
             Monitor, configure, and inspect physical ESP32 AttendX terminals, biometric sensors, and peripheral hardware.
           </p>
         </div>
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0">
           <Link
             href="/contract"
-            className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors bg-indigo-50 border border-indigo-200 text-indigo-800 hover:bg-indigo-100 h-10 px-4 py-2 shadow-sm"
+            className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors bg-indigo-50 border border-indigo-200 text-indigo-800 hover:bg-indigo-100 h-10 px-3 sm:px-4 py-2 shadow-sm flex-1 sm:flex-none whitespace-nowrap"
             title="Open the unified interactive firmware blueprint & protocol contract"
           >
-            <BookOpen className="w-4 h-4 mr-2 text-indigo-700" /> Firmware Blueprint
+            <BookOpen className="w-4 h-4 sm:mr-2 text-indigo-700" /> <span className="hidden sm:inline">Firmware Blueprint</span>
           </Link>
+
           <button
-            onClick={handleDownloadBlueprintPdf}
-            disabled={downloadingPdf}
-            className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors bg-emerald-600 text-white hover:bg-emerald-700 h-10 px-4 py-2 shadow-sm"
-            title="Download the authoritative v2.4.1 PDF technical handshake contract"
-          >
-            <Download className="w-4 h-4 mr-2 text-white" />
-            {downloadingPdf ? 'Generating PDF...' : 'Download Official Contract PDF'}
-          </button>
-          <button 
             onClick={() => { setIsApiSpecsModalOpen(true); setTestTelemetryStatus(null); }}
-            className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 h-10 px-4 py-2 shadow-sm"
+            className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 h-10 px-3 sm:px-4 py-2 shadow-sm flex-1 sm:flex-none whitespace-nowrap"
           >
-            <FileCode className="w-4 h-4 mr-2 text-indigo-600" /> ESP32 API Guide
+            <FileCode className="w-4 h-4 sm:mr-2 text-indigo-600" /> <span className="hidden sm:inline">ESP32 API Guide</span>
           </button>
-          <button 
+          <button
             onClick={() => { setIsAddModalOpen(true); setAddError(""); }}
-            className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors bg-blue-600 text-white hover:bg-blue-700 h-10 px-4 py-2 shadow-sm"
+            className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors bg-blue-600 text-white hover:bg-blue-700 h-10 px-3 sm:px-4 py-2 shadow-sm w-full sm:w-auto whitespace-nowrap mt-2 sm:mt-0"
           >
             <Plus className="w-4 h-4 mr-2" /> Register New Terminal
           </button>
@@ -642,13 +634,13 @@ export default function DevicesPage() {
                         Heartbeat Liveness
                       </div>
                       <p className="text-sm font-semibold text-slate-900">
-                        {isOnline 
+                        {isOnline
                           ? new Date(device.lastSync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                           : (device.secondsSinceLastHeartbeat !== undefined && device.secondsSinceLastHeartbeat < 86400
-                              ? (device.secondsSinceLastHeartbeat > 3600
-                                  ? `${Math.floor(device.secondsSinceLastHeartbeat / 3600)}h ago`
-                                  : `${Math.max(1, Math.floor(device.secondsSinceLastHeartbeat / 60))}m ago`)
-                              : 'No Heartbeat')}
+                            ? (device.secondsSinceLastHeartbeat > 3600
+                              ? `${Math.floor(device.secondsSinceLastHeartbeat / 3600)}h ago`
+                              : `${Math.max(1, Math.floor(device.secondsSinceLastHeartbeat / 60))}m ago`)
+                            : 'No Heartbeat')}
                       </p>
                       <p className="text-[11px] text-slate-500">
                         {isOnline ? 'Active (<30s ping)' : 'Timed out (>75s)'}
@@ -680,7 +672,7 @@ export default function DevicesPage() {
                       </div>
                       <div className="flex items-center space-x-2 p-2 rounded bg-white border border-slate-200">
                         <Camera className="w-3.5 h-3.5 text-purple-600 flex-shrink-0" />
-                        <span className="font-medium text-slate-700 truncate">ESP-CAM (OV2640)</span>
+                        <span className="font-medium text-slate-700 truncate">ESP32-S3-CAM (OV2640)</span>
                       </div>
                       <div className="flex items-center space-x-2 p-2 rounded bg-white border border-slate-200">
                         <Zap className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
@@ -727,7 +719,7 @@ export default function DevicesPage() {
                       </span>
                     </div>
                     <div className="w-full bg-indigo-200/60 h-2 rounded-full overflow-hidden flex">
-                      <div 
+                      <div
                         className="bg-indigo-600 h-full rounded-full transition-all duration-500"
                         style={{ width: `${Math.min(100, (((device.enrolledFingerprints !== undefined ? device.enrolledFingerprints : 2) / (device.maxSlots || 300)) * 100))}%` }}
                       />
@@ -779,8 +771,8 @@ export default function DevicesPage() {
                         disabled={actionLoading === `wifi_${device.id}`}
                         className={cn(
                           "inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md border transition-colors",
-                          isWifiConnected 
-                            ? "border-amber-200 text-amber-700 hover:bg-amber-50" 
+                          isWifiConnected
+                            ? "border-amber-200 text-amber-700 hover:bg-amber-50"
                             : "border-emerald-200 text-emerald-700 hover:bg-emerald-50 bg-emerald-50/40"
                         )}
                         title={isWifiConnected ? "Simulate Wi-Fi disconnection to test offline buffer" : "Restore Wi-Fi to test auto-synchronization"}
@@ -850,7 +842,7 @@ export default function DevicesPage() {
               </button>
             </CardHeader>
             <CardContent className="pt-6 space-y-6 text-sm">
-              
+
               {/* 20x4 LCD Screen Matrix Simulation */}
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
@@ -882,7 +874,7 @@ export default function DevicesPage() {
 
               {/* Subsystems Deep-Dive Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                
+
                 {/* 1. ESP32 Microcontroller */}
                 <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2">
                   <div className="flex items-center space-x-2 text-slate-800 font-bold text-xs uppercase tracking-wider">
@@ -925,11 +917,11 @@ export default function DevicesPage() {
                   </div>
                 </div>
 
-                {/* 4. ESP-CAM Vision Sensor */}
+                {/* 4. ESP32-S3-CAM Vision Sensor */}
                 <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2">
                   <div className="flex items-center space-x-2 text-slate-800 font-bold text-xs uppercase tracking-wider">
                     <Camera className="w-4 h-4 text-purple-600" />
-                    <span>ESP-CAM (OV2640 Module)</span>
+                    <span>ESP32-S3-CAM (OV2640 Module)</span>
                   </div>
                   <div className="text-xs space-y-1 text-slate-600">
                     <div className="flex justify-between"><span className="text-slate-500">Sensor:</span><span className="font-semibold text-slate-800">OV2640 2 Megapixel</span></div>
@@ -1129,8 +1121,8 @@ export default function DevicesPage() {
                   </p>
                 </div>
               </div>
-              <button 
-                onClick={() => { setIsBioSyncModalOpen(false); setSelectedBioSyncDevice(null); }} 
+              <button
+                onClick={() => { setIsBioSyncModalOpen(false); setSelectedBioSyncDevice(null); }}
                 className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200"
               >
                 <X className="w-5 h-5" />
@@ -1350,8 +1342,8 @@ export default function DevicesPage() {
                   <BookOpen className="w-3.5 h-3.5 mr-1.5 text-indigo-700" />
                   Full Blueprint
                 </Link>
-                <button 
-                  onClick={() => setIsApiSpecsModalOpen(false)} 
+                <button
+                  onClick={() => setIsApiSpecsModalOpen(false)}
                   className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200"
                 >
                   <X className="w-5 h-5" />
@@ -1363,7 +1355,7 @@ export default function DevicesPage() {
               {/* Navigation Tabs */}
               <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-2">
                 {[
-                  { id: 'telemetry', label: '1. Heartbeat & 16x2 / 20x4 LCD' },
+                  { id: 'telemetry', label: '1. Heartbeat & 20x4 / 20x4 LCD' },
                   { id: 'enrollment', label: '2. Slot-to-User Mapping (Hackathon MVP)' },
                   { id: 'checkin', label: '3. Attendance Scans (Slot or User)' },
                   { id: 'evidence', label: '4. Multipart JPEG Streaming' },
@@ -1402,14 +1394,14 @@ export default function DevicesPage() {
                   <div>
                     <p className="text-xs font-bold text-slate-700 mb-1.5">16×2 LCD Payload (Hackathon Hardware):</p>
                     <pre className="p-4 bg-slate-900 text-slate-100 rounded-xl text-xs font-mono overflow-x-auto leading-relaxed border border-slate-800">
-{`{
+                      {`{
   "deviceId": "DEV_TERM_01",
   "wifiStatus": "Connected",
   "rssi": -58,
   "batteryStatus": 92,
   "voltage": "4.18V",
   "esp32Heap": "296 KB Free",
-  "lcdStatus": "16x2 I2C LCD Ready (0x27)",
+  "lcdStatus": "20x4 I2C LCD Ready (0x27)",
   "lcdText": [
     "ATTENDX TERMINAL",
     "SCAN FINGER / PIN"
@@ -1462,7 +1454,7 @@ export default function DevicesPage() {
                       POST /api/devices/enrollment
                     </div>
                     <pre className="p-4 bg-slate-900 text-slate-100 rounded-xl text-xs font-mono overflow-x-auto leading-relaxed border border-slate-800">
-{`{
+                      {`{
   "action": "QUEUE_ENROLLMENT",
   "deviceId": "DEV_TERM_01",
   "userId": "001A",
@@ -1477,7 +1469,7 @@ export default function DevicesPage() {
                       POST /api/devices/commands/result
                     </div>
                     <pre className="p-3 bg-slate-900 text-slate-100 rounded-lg text-xs font-mono overflow-x-auto">
-{`{
+                      {`{
   "deviceId": "DEV_TERM_01",
   "commandId": "cmd_enroll_9k2a",
   "type": "ENROLL_FINGERPRINT",
@@ -1498,7 +1490,7 @@ export default function DevicesPage() {
                       POST /api/devices/commands/result
                     </div>
                     <pre className="p-3 bg-slate-900 text-slate-100 rounded-lg text-xs font-mono overflow-x-auto">
-{`{
+                      {`{
   "deviceId": "DEV_TERM_01",
   "commandId": "cmd_enroll_9k2a",
   "type": "ENROLL_FINGERPRINT",
@@ -1531,7 +1523,7 @@ export default function DevicesPage() {
                   <div>
                     <p className="text-xs font-bold text-slate-700 mb-1.5">Sending via Slot Number (DY50 Optical):</p>
                     <pre className="p-4 bg-slate-900 text-slate-100 rounded-xl text-xs font-mono overflow-x-auto leading-relaxed border border-slate-800">
-{`// Optical Fingerprint Match:
+                      {`// Optical Fingerprint Match:
 {
   "deviceId": "DEV_TERM_01",
   "slotNumber": 1,
@@ -1552,7 +1544,7 @@ export default function DevicesPage() {
                   <div>
                     <p className="text-xs font-bold text-slate-700 mb-1.5">Backend Response for 16×2 / 20×4 LCD:</p>
                     <pre className="p-3 bg-slate-900 text-slate-100 rounded-lg text-xs font-mono overflow-x-auto">
-{`{
+                      {`{
   "ok": true,
   "success": true,
   "eventType": "CHECK_IN",
@@ -1586,7 +1578,7 @@ export default function DevicesPage() {
                   <div>
                     <p className="text-xs font-bold text-slate-700 mb-1.5">C++ / Arduino HTTPClient Example:</p>
                     <pre className="p-4 bg-slate-900 text-slate-100 rounded-xl text-xs font-mono overflow-x-auto leading-relaxed border border-slate-800">
-{`// Send raw camera frame buffer fb directly:
+                      {`// Send raw camera frame buffer fb directly:
 String boundary = "----ESP32Boundary1234";
 http.begin("https://your-attendx-domain.app/api/attendance/evidence");
 http.addHeader("Content-Type", "multipart/form-data; boundary=" + boundary);
@@ -1622,7 +1614,7 @@ http.addHeader("Content-Type", "multipart/form-data; boundary=" + boundary);
                   <div>
                     <p className="text-xs font-bold text-slate-700 mb-1.5">1. Enrollment Success Report:</p>
                     <pre className="p-4 bg-slate-900 text-slate-100 rounded-xl text-xs font-mono overflow-x-auto leading-relaxed border border-slate-800">
-{`{
+                      {`{
   "deviceId": "DEV_TERM_01",
   "commandId": "cmd_enroll_9k2a",
   "type": "ENROLL_FINGERPRINT",
@@ -1637,7 +1629,7 @@ http.addHeader("Content-Type", "multipart/form-data; boundary=" + boundary);
                   <div>
                     <p className="text-xs font-bold text-slate-700 mb-1.5">2. Hardware Sensor Failure / Timeout Report:</p>
                     <pre className="p-4 bg-slate-900 text-slate-100 rounded-xl text-xs font-mono overflow-x-auto leading-relaxed border border-slate-800">
-{`{
+                      {`{
   "deviceId": "DEV_TERM_01",
   "commandId": "cmd_enroll_9k2a",
   "type": "ENROLL_FINGERPRINT",
@@ -1650,7 +1642,7 @@ http.addHeader("Content-Type", "multipart/form-data; boundary=" + boundary);
                   <div>
                     <p className="text-xs font-bold text-slate-700 mb-1.5">3. Expected Cloud Acknowledgment (HTTP 200 OK):</p>
                     <pre className="p-3 bg-slate-900 text-emerald-400 rounded-lg text-xs font-mono overflow-x-auto">
-{`{
+                      {`{
   "ok": true,
   "ack": true,
   "success": true,

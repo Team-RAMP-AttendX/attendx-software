@@ -44,7 +44,7 @@ interface StoredAuth {
 
 const emptyState: StoredAuth = {
   isAuthenticated: false,
-  adminEmail: 'redemptionjonathan1@gmail.com',
+  adminEmail: process.env.NEXT_PUBLIC_MASTER_ADMIN_EMAIL || 'admin@example.com',
   isSimulationMode: false,
 };
 
@@ -56,7 +56,7 @@ function syncFromStorage(): StoredAuth {
   try {
     const authRaw = localStorage.getItem('attendx_admin_auth');
     let isAuth = false;
-    let email = 'redemptionjonathan1@gmail.com';
+    let email = process.env.NEXT_PUBLIC_MASTER_ADMIN_EMAIL || 'admin@example.com';
     if (authRaw) {
       const parsed = JSON.parse(authRaw);
       if (parsed?.email && parsed?.sessionToken) {
@@ -155,21 +155,30 @@ export function SystemModeProvider({ children }: { children: React.ReactNode }) 
     setIsHydrated(true);
   }, []);
 
-  const login = useCallback((email: string) => {
+  const login = useCallback((email: string, _sessionToken?: string) => {
     authStore.setAuth(true, email);
   }, []);
 
   const logout = useCallback(() => {
-    authStore.setAuth(false, 'redemptionjonathan1@gmail.com');
+    authStore.setAuth(false, process.env.NEXT_PUBLIC_MASTER_ADMIN_EMAIL || 'admin@example.com');
+    setSimState(createInitialSimulationState());
   }, []);
 
   const setSimulationMode = useCallback((val: boolean) => {
-    authStore.setSimulationMode(val);
-  }, []);
+    if (!val && authData.adminEmail === 'simulation_guest@attendx.local') {
+      logout();
+    } else {
+      authStore.setSimulationMode(val);
+    }
+  }, [authData.adminEmail, logout]);
 
   const toggleSimulationMode = useCallback(() => {
-    authStore.setSimulationMode(!authData.isSimulationMode);
-  }, [authData.isSimulationMode]);
+    if (authData.isSimulationMode && authData.adminEmail === 'simulation_guest@attendx.local') {
+      logout();
+    } else {
+      authStore.setSimulationMode(!authData.isSimulationMode);
+    }
+  }, [authData.isSimulationMode, authData.adminEmail, logout]);
 
   const resetSimulationData = useCallback(() => {
     setSimState(createInitialSimulationState());
