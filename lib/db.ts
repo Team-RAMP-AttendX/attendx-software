@@ -468,7 +468,7 @@ export async function recordCommandResult(report: CommandResultReport): Promise<
     const slot = report.slotNumber ?? queuedCmd?.slotNumber;
     if (slot !== undefined) {
       const paddedSlot = String(slot).padStart(3, '0');
-      matchedUser = db.users.find(u => u.id.startsWith(paddedSlot)) || db.users[slot - 1];
+      matchedUser = db.users.find(u => u.id.startsWith(paddedSlot));
     }
   }
 

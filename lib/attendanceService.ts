@@ -125,7 +125,6 @@ export async function processAttendancePayload(
         const matchedUser =
           db.users.find(u => u.id.toUpperCase().startsWith(paddedNum)) ||
           db.users.find(u => u.id.toUpperCase() === `USR${paddedNum}`) ||
-          db.users[targetSlot - 1] ||
           db.users.find(u => u.id.includes(String(targetSlot)));
 
         if (matchedUser) {
@@ -181,20 +180,15 @@ export async function processAttendancePayload(
     }
 
     if (!user) {
-      // Auto-provision unregistered user from keypad input to support tests 3/4/5
-      user = {
-        id: cleanUserId,
-        name: `User ${cleanUserId}`,
-        role: 'Student', // Default to Student
-        status: 'Active',
-        dateRegistered: now.toISOString(),
-        totalAttendance: 0,
-        lateOccurrences: 0
-      };
-      db.users.push(user);
-      
-      // We must fire-and-forget save the new user to Firestore
-      saveUserDoc(user).catch(e => console.error("Failed to auto-provision user in DB:", e));
+      if (!unmappedError) {
+        unmappedError = {
+          status: 404,
+          error: 'SLOT_NOT_MAPPED',
+          message: `User ID '${cleanUserId}' (or associated slot) is not mapped to an enrolled user on ${cleanDeviceId}. Please enroll via Dashboard first.`,
+          displayMessage: 'USER NOT FOUND'
+        };
+      }
+      continue;
     }
 
     lastProcessedUser = user;

@@ -603,10 +603,10 @@ export default function UsersPage() {
                           "p-1.5 rounded flex items-center space-x-1 text-xs font-medium border", 
                           user.hasPin ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-slate-50 text-slate-400 border-slate-200"
                         )} 
-                        title={user.hasPin ? "PIN Active" : "No PIN"}
+                        title={user.hasPin ? "PIN Active" : "No Slot Assigned"}
                       >
                         <Hash className="w-3.5 h-3.5" />
-                        <span>{user.hasPin ? "PIN" : "No PIN"}</span>
+                        <span>{user.hasPin ? "PIN" : "No Slot Assigned"}</span>
                       </div>
                     </div>
                   </td>
