@@ -177,10 +177,8 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: `User '${cleanUserId}' not found in registered directory` }, { status: 404 });
       }
 
-      // Determine slot
-      const existingFpSlots = db.fingerprints.map(f => f.slotNumber || 0);
-      const nextSlot = (Math.max(0, ...existingFpSlots)) + 1;
-      const targetSlotNumber = slotNumber || nextSlot;
+      // Determine slot - leave undefined by default to let hardware dynamically assign it
+      const targetSlotNumber = slotNumber || undefined;
       const generatedCommandId = commandId ? String(commandId).trim() : `cmd_enroll_${Date.now().toString(36)}`;
 
       // Queue command in Firestore so ESP32 terminal receives it on next telemetry poll
@@ -199,7 +197,7 @@ export async function POST(req: Request) {
           '** ENROLL MODE **',
           `User: ${user.name.substring(0, 14)}`,
           `Place finger on sensor`,
-          `Slot #${targetSlotNumber} (1/2)`
+          targetSlotNumber ? `Slot #${targetSlotNumber} (1/2)` : `Slot: Auto (1/2)`
         ];
         await writeDb(db);
       }
