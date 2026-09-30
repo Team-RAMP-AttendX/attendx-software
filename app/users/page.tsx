@@ -240,14 +240,11 @@ export default function UsersPage() {
       const pollInterval = setInterval(async () => {
         attempts++
         try {
-          const pollRes = await fetch(`/api/devices/enrollment?jobId=${currentJobId}&deviceId=${encodeURIComponent(targetDev)}`)
+          const pollRes = await fetch(`/api/users/${targetId}/status`)
           if (pollRes.ok) {
             const pollData = await pollRes.json().catch(() => ({}))
 
-            if (pollData.status === 'PENDING_SCAN' || pollData.status === 'SCANNING' || pollData.status === 'EXECUTING') {
-              setFpEnrollStatus('WAITING_FOR_FINGER')
-              setFpStatusMsg(`Terminal armed & active! Waiting for ${targetName} to place finger twice on DY50 optical sensor (Slot #${targetSlot})...`)
-            } else if (pollData.status === 'COMPLETED' || pollData.status === 'SUCCESS') {
+            if (pollData.hasFingerprint) {
               clearInterval(pollInterval)
               clearInterval(timerInterval)
               setFpEnrollStatus('SUCCESS')
@@ -256,12 +253,10 @@ export default function UsersPage() {
               showNotification(`Fingerprint registered for ${targetName} on terminal ${targetDev}.`)
               fetchUsers()
               return
-            } else if (pollData.status === 'FAILED' || pollData.status === 'ERROR') {
-              clearInterval(pollInterval)
-              clearInterval(timerInterval)
-              setFpEnrollStatus('FAILED')
-              setFpFailureReason(pollData.job?.reason || pollData.reason || 'Terminal reported scan failure or sensor timeout.')
-              return
+            } else {
+              // If not yet true, we assume it's still waiting on the user to scan
+              setFpEnrollStatus('WAITING_FOR_FINGER')
+              setFpStatusMsg(`Terminal armed & active! Waiting for ${targetName} to place finger twice on DY50 optical sensor (Slot #${targetSlot})...`)
             }
           }
         } catch {
