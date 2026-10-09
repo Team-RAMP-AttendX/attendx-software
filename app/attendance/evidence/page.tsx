@@ -139,6 +139,7 @@ export default function EvidencePage() {
                         fill
                         className="object-cover"
                         referrerPolicy="no-referrer"
+                        style={{ transform: 'rotate(-210deg) scale(1.5)' }}
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20 pointer-events-none"></div>
                       <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-[11px] text-white font-mono">
@@ -195,6 +196,7 @@ export default function EvidencePage() {
                 fill
                 className="object-contain"
                 referrerPolicy="no-referrer"
+                style={{ transform: 'rotate(-210deg) scale(1.5)' }}
               />
             </div>
 
